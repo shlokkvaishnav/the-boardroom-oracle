@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # moving; raise it if agents feel shallow.
     anthropic_effort: Effort = "low"
     anthropic_max_tokens: int = 2048
+    #: Force the scripted/random agents even when a key is present. Useful for
+    #: rehearsing the demo without spending tokens.
+    use_mock_agents: bool = False
 
     # --- CORS ---
     # Comma-separated rather than a JSON list: pydantic-settings parses complex

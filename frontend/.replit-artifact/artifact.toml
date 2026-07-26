@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Boardroom Oracle"
+version = "1.0.0"
+id = "artifacts/boardroom-oracle"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23927
+
+[services.development]
+run = "pnpm --filter @workspace/boardroom-oracle run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/boardroom-oracle", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/boardroom-oracle/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23927"
+BASE_PATH = "/"

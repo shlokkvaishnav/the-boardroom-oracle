@@ -18,7 +18,10 @@ from app.main import create_app
 def settings() -> Settings:
     """Deterministic settings, independent of the ambient environment."""
     return Settings(
-        anthropic_api_key="test-key-not-used",
+        anthropic_api_key=None,
+        # Belt and braces: even if a key leaks in from the environment, no test
+        # may ever reach the real API.
+        use_mock_agents=True,
         allowed_origins="http://localhost:3000",
         cors_allow_all=False,
         rounds=3,

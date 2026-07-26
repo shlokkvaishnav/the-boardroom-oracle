@@ -1,5 +1,11 @@
-# --- Frontend is built separately in Lovable; keep it out of this history ---
-/frontend/
+# --- Source archives (the frontend export is ~107MB, mostly a bundled venv) ---
+*.zip
+
+# --- Frontend (tracked; only its build output and deps are ignored) ---
+node_modules/
+/frontend/dist/
+/frontend/.vite/
+*.tsbuildinfo
 
 # --- Secrets ---
 .env
