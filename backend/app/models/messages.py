@@ -23,6 +23,7 @@ from app.models.schemas import (
     KnowledgeNode,
     NegotiationState,
     OfferRecord,
+    WhisperRecord,
 )
 
 __all__ = [
@@ -30,6 +31,7 @@ __all__ = [
     "OfferMessage",
     "GraphUpdateMessage",
     "ThoughtMessage",
+    "WhisperMessage",
     "KnowledgeUpdateMessage",
     "RoundChangeMessage",
     "ClosingMessage",
@@ -129,6 +131,13 @@ class ThoughtMessage(ContractModel):
     payload: AgentThought
 
 
+class WhisperMessage(ContractModel):
+    """A private aside, pushed to viewers but to no other agent."""
+
+    type: Literal["whisper"] = "whisper"
+    payload: WhisperRecord
+
+
 class KnowledgeUpdateMessage(ContractModel):
     type: Literal["knowledge_update"] = "knowledge_update"
     payload: KnowledgeUpdatePayload
@@ -150,6 +159,7 @@ WSMessage = Annotated[
         OfferMessage,
         GraphUpdateMessage,
         ThoughtMessage,
+        WhisperMessage,
         KnowledgeUpdateMessage,
         RoundChangeMessage,
         ClosingMessage,

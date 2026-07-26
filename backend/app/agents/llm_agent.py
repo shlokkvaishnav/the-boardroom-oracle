@@ -132,6 +132,13 @@ class LLMAgent:
                 "    said anything that moved you, repeat your last number — but if "
                 "    someone landed a point, move it. Never moving is not strength; "
                 "    it means you were not listening.",
+                "  - `whisper` is optional and says something to ONE party that "
+                "    nobody else hears. It does not use your action, so you can "
+                "    whisper and still offer or answer. Use it for what you would "
+                "    not say out loud: warn an ally, propose something you do not "
+                "    want overheard, or say plainly what you think of someone. "
+                "    Leave it null most turns — constant whispering is as flat as "
+                "    none at all.",
                 "  - `claims` is the point underneath what you just said, written out "
                 "    plainly so it can be recorded and checked. At most two, and often "
                 "    none: leave it empty if you only agreed, asked a question, or made "
@@ -210,6 +217,19 @@ class LLMAgent:
                 "",
                 "WHAT HAS BEEN SAID (answer it — do not talk past it):",
                 remarks,
+                *(
+                    [
+                        "",
+                        "SAID TO YOU PRIVATELY — nobody else heard this, and nobody "
+                        "else knows you know it:",
+                        *(
+                            f"  {by_id.get(w.from_, w.from_)}: \"{w.text}\""
+                            for w in context.whispers_to_me
+                        ),
+                    ]
+                    if context.whispers_to_me
+                    else []
+                ),
                 "",
                 "YOUR PRIVATE READ ON THE OTHERS:",
                 "  (my_trust is your own running score; public_trust is the visible "

@@ -22,6 +22,7 @@ const initial: NegotiationState = {
   synthesised: false,
   offerLog: [],
   agentThoughts: [],
+  whispers: [],
   holdings: {},
   closingPositions: null,
 };

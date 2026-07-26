@@ -117,6 +117,7 @@ def test_state_returns_the_contracted_shape_after_start(api: TestClient) -> None
         "knowledge_graph",
         "offer_log",
         "agent_thoughts",
+        "whispers",
         "holdings",
         "closing_positions",
     }

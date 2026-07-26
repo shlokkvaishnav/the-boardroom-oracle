@@ -109,6 +109,7 @@ function emptyState(): NegotiationState {
     },
     offerLog: [],
     agentThoughts: [],
+    whispers: [],
     holdings: {},
     closingPositions: null,
     agreed: [],

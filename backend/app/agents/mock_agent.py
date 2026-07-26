@@ -14,7 +14,7 @@ from __future__ import annotations
 import random
 
 from app.agents.base import TurnContext
-from app.models.agent_io import AgentDecision, Claim, ProposedOffer
+from app.models.agent_io import AgentDecision, Claim, ProposedOffer, Whisper
 
 __all__ = ["ScriptedAgent", "RandomAgent", "topic_entities"]
 
@@ -115,9 +115,20 @@ class RandomAgent:
         drift = (context.round / max(1, context.total_rounds)) * 0.5
         return max(-1.0, min(1.0, anchor + drift * (1 if anchor < 0 else -1)))
 
+    def _whisper(self, context: TurnContext) -> Whisper | None:
+        """An occasional aside, so a keyless run shows the audience something
+        the table cannot see. Rare on purpose: constant whispering is as flat
+        as none at all."""
+        others = context.other_party_ids
+        if not others or self._rng.random() < 0.8:
+            return None
+        target = self._rng.choice(others)
+        return Whisper(to=target, text=f"Between us — I would not trust {target} here.")
+
     async def decide(self, context: TurnContext) -> AgentDecision:
         claims = self._claims(context)
         stance = self._stance(context)
+        whisper = self._whisper(context)
 
         # Answer the oldest outstanding offer first, so offers don't pile up.
         if context.pending_offers:
@@ -129,6 +140,7 @@ class RandomAgent:
                     thought=f"Taking {offer.amount:g} from {offer.from_id}.",
                     claims=claims,
                     stance=stance,
+                    whisper=whisper,
                 )
             return AgentDecision(
                 action="reject",
@@ -136,6 +148,7 @@ class RandomAgent:
                 thought=f"Not enough from {offer.from_id}.",
                 claims=claims,
                 stance=stance,
+                whisper=whisper,
             )
 
         others = context.other_party_ids
@@ -145,6 +158,7 @@ class RandomAgent:
                 thought="Holding position this round.",
                 claims=claims,
                 stance=stance,
+                whisper=whisper,
             )
 
         target = self._rng.choice(others)
@@ -158,4 +172,5 @@ class RandomAgent:
             thought=f"Testing {target} with {amount:g}.",
             claims=claims,
             stance=stance,
+            whisper=whisper,
         )

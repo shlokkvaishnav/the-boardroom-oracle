@@ -67,6 +67,7 @@ const emptyState = (): NegotiationState => ({
   unresolved: [],
   synthesised: false,
   agentThoughts: [],
+  whispers: [],
   holdings: {},
   closingPositions: null,
 });
@@ -142,6 +143,16 @@ export class LiveNegotiationClient implements NegotiationClient {
         this.state = {
           ...this.state,
           agentThoughts: [...this.state.agentThoughts, toThought(payload)],
+        };
+        break;
+
+      case "whisper":
+        this.state = {
+          ...this.state,
+          whispers: [
+            ...this.state.whispers,
+            payload as unknown as NegotiationState["whispers"][number],
+          ],
         };
         break;
 

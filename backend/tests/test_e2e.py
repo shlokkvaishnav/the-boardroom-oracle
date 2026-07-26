@@ -116,6 +116,7 @@ async def test_the_reveal_serializes_to_json_the_frontend_can_consume() -> None:
         "knowledge_graph",
         "offer_log",
         "agent_thoughts",
+        "whispers",
         "holdings",
         "closing_positions",
     }

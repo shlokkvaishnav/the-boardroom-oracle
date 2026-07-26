@@ -20,6 +20,7 @@ from app.models.schemas import SearchRecord
 
 __all__ = [
     "Action",
+    "Whisper",
     "ClaimKind",
     "Claim",
     "ProposedOffer",
@@ -75,6 +76,24 @@ class Claim(BaseModel):
             "The few concrete things this claim is about — a place, an organisation, "
             "a number, a date. Plain names, no articles. May be empty."
         ),
+    )
+
+
+class Whisper(BaseModel):
+    """Something said to one party only, out of everyone else's hearing.
+
+    Deliberately *not* an action. Whispering is a side channel, not a move, so
+    it sits alongside whatever you do this turn — the interesting case is
+    offering someone a deal in public while privately telling a third party why.
+    Were it an action, whispering would cost you your turn and nobody would
+    ever do it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    to: str = Field(description="The id of the one party who will hear this.")
+    text: str = Field(
+        description="What you say to them privately. One or two sentences."
     )
 
 
@@ -140,6 +159,17 @@ class AgentDecision(BaseModel):
             "(completely for it). Report where you actually are this turn, not "
             "where you started: if someone made a point that moved you, the "
             "number should move. Null when there is no matter on the table."
+        ),
+    )
+    whisper: Whisper | None = Field(
+        default=None,
+        description=(
+            "Optionally, something said to exactly one other party that the rest "
+            "of the table will not hear. Use it to coordinate, to warn, or to "
+            "say the thing you would not say out loud — it does not use up your "
+            "action, so you may whisper and still offer, accept, reject or pass. "
+            "Null on most turns; a table where everyone is always whispering is "
+            "as flat as one where nobody ever does."
         ),
     )
     claims: list[Claim] = Field(

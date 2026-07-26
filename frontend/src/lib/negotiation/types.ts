@@ -92,6 +92,21 @@ export interface AgentThought {
   searched: SearchRecord[];
 }
 
+/**
+ * An aside said to one party only.
+ *
+ * You see all of them; the parties they were not addressed to never do. That
+ * asymmetry is the feature — dramatic irony needs the audience to know more
+ * than the room.
+ */
+export interface Whisper {
+  from: string;
+  to: string;
+  text: string;
+  round: number;
+  timestamp: string;
+}
+
 export interface NegotiationState {
   round: number;
   /** Session length, from the backend. Never assume six. */
@@ -103,6 +118,8 @@ export interface NegotiationState {
   knowledgeGraph: { nodes: KnowledgeNode[]; edges: KnowledgeEdge[] };
   offerLog: Offer[];
   agentThoughts: AgentThought[];
+  /** Every aside so far, oldest first. */
+  whispers: Whisper[];
   /** Current split of the pool, live. */
   holdings: Record<string, number>;
   /** Each party's closing statement on the topic. Null until the end. */

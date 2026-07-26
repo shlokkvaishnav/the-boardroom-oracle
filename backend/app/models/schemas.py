@@ -38,6 +38,7 @@ __all__ = [
     "OfferSchema",
     "SearchRecord",
     "AgentThought",
+    "WhisperRecord",
     "NegotiationState",
     "OfferResponseRequest",
     "SessionStartRequest",
@@ -280,6 +281,24 @@ class KnowledgeGraphView(ContractModel):
     edges: list[KnowledgeEdge] = Field(default_factory=list)
 
 
+class WhisperRecord(ContractModel):
+    """One private aside, as the audience sees it.
+
+    The asymmetry is the whole feature. This reaches the browser, because
+    watching Rex promise Ada one thing and privately tell Mira the opposite is
+    the most interesting thing that can happen at this table. It does *not*
+    reach any agent except the recipient — see `TurnContext.whispers_to_me`.
+
+    Dramatic irony only works if the audience knows more than the room does.
+    """
+
+    from_: str = Field(alias="from")
+    to: str
+    text: str
+    round: int
+    timestamp: str = Field(default_factory=utc_now_iso)
+
+
 class NegotiationState(ContractModel):
     """The complete public state of a session.
 
@@ -302,6 +321,9 @@ class NegotiationState(ContractModel):
     knowledge_graph: KnowledgeGraphView = Field(default_factory=KnowledgeGraphView)
     offer_log: list[OfferRecord] = Field(default_factory=list)
     agent_thoughts: list[AgentThought] = Field(default_factory=list)
+    #: Every aside so far. Visible to whoever is watching, never to the
+    #: parties it was not addressed to.
+    whispers: list[WhisperRecord] = Field(default_factory=list)
     #: Current split of the pool. The number the whole discussion is about,
     #: so it belongs on screen while it is still in play.
     holdings: dict[str, float] = Field(default_factory=dict)

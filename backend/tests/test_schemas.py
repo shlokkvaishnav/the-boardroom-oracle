@@ -166,6 +166,9 @@ def test_negotiation_state_serializes_to_exact_expected_json() -> None:
                 "searched": [],
             }
         ],
+        # Asides: shown to whoever is watching, never to the parties they
+        # were not addressed to.
+        "whispers": [],
         # The stake, visible while it is still in play.
         "holdings": {},
         "closing_positions": None,
@@ -182,6 +185,7 @@ def test_state_has_exactly_the_contracted_top_level_keys() -> None:
         "knowledge_graph",
         "offer_log",
         "agent_thoughts",
+        "whispers",
         "holdings",
         "closing_positions",
     }

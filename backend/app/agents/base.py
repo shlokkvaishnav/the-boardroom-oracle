@@ -12,7 +12,7 @@ from typing import Protocol, runtime_checkable
 
 from app.agents.opponent_model import BeliefSet
 from app.models.agent_io import AgentDecision
-from app.models.schemas import AgentInfo, AgentThought, OfferRecord, Pool
+from app.models.schemas import AgentInfo, AgentThought, OfferRecord, Pool, WhisperRecord
 
 __all__ = ["PendingOffer", "TurnContext", "Agent"]
 
@@ -82,6 +82,12 @@ class TurnContext:
     #: — so it cannot agree with, rebut or press anyone. This is the difference
     #: between a negotiation and three monologues.
     recent_remarks: list[AgentThought] = field(default_factory=list)
+    #: Asides addressed to *this agent alone*, oldest first.
+    #:
+    #: Populated only for the recipient. Everyone else's context is built
+    #: without them, which is what makes a whisper private — the secrecy is
+    #: structural, not an instruction the model is asked to respect.
+    whispers_to_me: list[WhisperRecord] = field(default_factory=list)
 
     @property
     def my_holdings(self) -> float:

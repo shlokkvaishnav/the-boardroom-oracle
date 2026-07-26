@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Search } from "lucide-react";
-import type { Agent, AgentThought, SearchRecord } from "@/lib/negotiation/types";
+import { EyeOff } from "lucide-react";
+import type { Agent, AgentThought, SearchRecord, Whisper } from "@/lib/negotiation/types";
 
 /** Hostname alone — a full URL would wrap three times in this column. */
 function host(url: string) {
@@ -55,17 +56,44 @@ function Citations({ searched }: { searched: SearchRecord[] }) {
  * "thoughts", which described the old behaviour and would now be a lie.
  */
 
-export function ThoughtsFeed({ thoughts, agents }: { thoughts: AgentThought[]; agents: Agent[] }) {
+type Line =
+  | { kind: "said"; at: string; thought: AgentThought }
+  | { kind: "aside"; at: string; whisper: Whisper };
+
+/**
+ * Interleaved by timestamp, so an aside sits where it was actually said.
+ *
+ * You are seeing something the table cannot. Rendering asides in a separate
+ * panel would lose that — the point is watching someone say one thing out loud
+ * and something else under their breath, in sequence.
+ */
+function interleave(thoughts: AgentThought[], whispers: Whisper[]): Line[] {
+  const lines: Line[] = [
+    ...thoughts.map((thought) => ({ kind: "said" as const, at: thought.timestamp, thought })),
+    ...whispers.map((whisper) => ({ kind: "aside" as const, at: whisper.timestamp, whisper })),
+  ];
+  return lines.sort((a, b) => a.at.localeCompare(b.at)).slice(-40);
+}
+
+export function ThoughtsFeed({
+  thoughts,
+  agents,
+  whispers,
+}: {
+  thoughts: AgentThought[];
+  agents: Agent[];
+  whispers: Whisper[];
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
   useEffect(() => {
     const el = ref.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [thoughts]);
+  }, [thoughts, whispers]);
 
   const byId = new Map(agents.map((a) => [a.id, a]));
-  const visible = thoughts.slice(-40);
+  const visible = interleave(thoughts, whispers);
 
   return (
     <section className="panel flex min-h-0 flex-col rounded-lg">
@@ -88,11 +116,34 @@ export function ThoughtsFeed({ thoughts, agents }: { thoughts: AgentThought[]; a
             <span className="text-primary">&gt;</span> nobody has spoken yet…
           </p>
         )}
-        {visible.map((t, i) => {
+        {visible.map((line, i) => {
+          if (line.kind === "aside") {
+            const from = byId.get(line.whisper.from);
+            const to = byId.get(line.whisper.to);
+            return (
+              <p
+                key={`w-${line.at}-${i}`}
+                className="animate-slide-in ml-3 border-l border-dashed border-agent-4/50 pl-2 italic"
+                title="Only the recipient heard this"
+              >
+                <EyeOff className="mr-1 inline size-3 text-agent-4/80" />
+                <span className="font-bold" style={{ color: from?.color }}>
+                  {from?.name ?? line.whisper.from}
+                </span>
+                <span className="text-agent-4/80"> → </span>
+                <span className="font-bold" style={{ color: to?.color }}>
+                  {to?.name ?? line.whisper.to}
+                </span>
+                <span className="text-border">: </span>
+                <span className="text-foreground/60">{line.whisper.text}</span>
+              </p>
+            );
+          }
+          const t = line.thought;
           const agent = byId.get(t.agentId);
           return (
             <p
-              key={`${t.timestamp}-${i}`}
+              key={`t-${t.timestamp}-${i}`}
               className="animate-slide-in"
               style={{ color: "var(--muted-foreground)" }}
             >

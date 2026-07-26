@@ -162,7 +162,11 @@ function Index() {
           )}
         </section>
 
-        <ThoughtsFeed thoughts={state.agentThoughts} agents={state.agents} />
+        <ThoughtsFeed
+          thoughts={state.agentThoughts}
+          agents={state.agents}
+          whispers={state.whispers}
+        />
       </div>
 
       <OfferTimeline

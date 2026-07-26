@@ -49,6 +49,7 @@ from app.models.messages import (
     RoundChangeMessage,
     RoundChangePayload,
     ThoughtMessage,
+    WhisperMessage,
     WSMessage,
 )
 from app.models.schemas import (
@@ -59,6 +60,7 @@ from app.models.schemas import (
     KnowledgeNode,
     Pool,
     SearchRecord,
+    WhisperRecord,
 )
 
 logger = logging.getLogger("boardroom.engine")
@@ -70,6 +72,10 @@ EventEmitter = Callable[[WSMessage], Awaitable[None]]
 
 #: How much of the shared log an agent is shown.
 RECENT_OFFER_WINDOW = 8
+
+#: How many asides a recipient is reminded of. Small: a whisper is meant to
+#: land now, not to accumulate into a private second transcript.
+RECENT_WHISPER_WINDOW = 4
 
 #: How much of the table talk an agent is shown. Roughly the last two rounds
 #: with three agents — enough to answer what was just said without the prompt
@@ -149,6 +155,8 @@ class NegotiationEngine:
         self.round = 0
         self.offer_log: list[OfferRecord] = []
         self.thoughts: list[AgentThought] = []
+        #: Asides, in order. Public to viewers, private between parties.
+        self.whispers: list[WhisperRecord] = []
         self.pending: dict[str, PendingOffer] = {}
         self.finished = False
         self.closing: ClosingPayload | None = None
@@ -195,6 +203,7 @@ class NegotiationEngine:
             knowledge_graph=self.knowledge.view(),
             offer_log=list(self.offer_log),
             agent_thoughts=list(self.thoughts),
+            whispers=list(self.whispers),
             holdings=dict(self.holdings),
             closing_positions=self._closing_positions,
         )
@@ -377,6 +386,15 @@ class NegotiationEngine:
             ],
             recent_offers=list(self.offer_log[-RECENT_OFFER_WINDOW:]),
             recent_remarks=list(self.thoughts[-RECENT_REMARK_WINDOW:]),
+            # Filtered by recipient here, which is the entire privacy
+            # mechanism: another agent's context is simply built without
+            # them, so there is nothing for a model to leak or be asked to
+            # keep quiet about.
+            whispers_to_me=[
+                whisper
+                for whisper in self.whispers[-RECENT_WHISPER_WINDOW * 4 :]
+                if whisper.to == agent_id
+            ][-RECENT_WHISPER_WINDOW:],
             beliefs=self.beliefs.get(agent_id),
             trust_row=self.graph.trust_toward(agent_id, self.graph.party_ids),
             context_topic=self.context_topic,
@@ -402,6 +420,10 @@ class NegotiationEngine:
         )
         self.thoughts.append(thought)
         events.append(ThoughtMessage(payload=thought))
+
+        aside = self._record_whisper(agent_id, decision)
+        if aside is not None:
+            events.append(WhisperMessage(payload=aside))
 
         knowledge = self._record_claims(agent_id, decision, searched)
         if not knowledge.empty:
@@ -562,6 +584,39 @@ class NegotiationEngine:
             logger.warning("scribe pass did not settle in %.0fs; cancelling", timeout)
             task.cancel()
         del done
+
+    def _record_whisper(
+        self, agent_id: str, decision: AgentDecision
+    ) -> WhisperRecord | None:
+        """Log an aside, if this turn had one. Caller must hold the lock.
+
+        Kept out of `self.thoughts` deliberately. That list is the public
+        transcript: it feeds every agent's `recent_remarks`, the rapporteur, and
+        the fallback closing positions. A whisper in there would be private in
+        name only, leaking to the whole table on the very next turn.
+        """
+        whisper = getattr(decision, "whisper", None)
+        if whisper is None:
+            return None
+
+        text = whisper.text.strip()
+        if not text:
+            return None
+        if whisper.to == agent_id:
+            logger.info("%s tried to whisper to itself; dropped", agent_id)
+            return None
+        if whisper.to not in self.holdings:
+            logger.warning(
+                "%s whispered to unknown party %r; dropped", agent_id, whisper.to
+            )
+            return None
+
+        record = WhisperRecord(
+            from_=agent_id, to=whisper.to, text=text, round=self.round
+        )
+        self.whispers.append(record)
+        logger.info("%s whispered to %s", agent_id, whisper.to)
+        return record
 
     def _record_claims(
         self, agent_id: str, decision: AgentDecision, searched: list[SearchRecord]

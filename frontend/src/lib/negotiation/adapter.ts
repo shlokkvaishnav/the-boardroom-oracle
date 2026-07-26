@@ -17,6 +17,7 @@ import type {
   Offer,
   SearchRecord,
   TrustEdge,
+  Whisper,
   VoiceOfferResult,
 } from "./types";
 
@@ -89,6 +90,7 @@ export interface WireState {
   knowledge_graph?: WireKnowledgeGraph;
   offer_log: WireOffer[];
   agent_thoughts: WireThought[];
+  whispers?: Whisper[];
   holdings?: Record<string, number>;
   closing_positions: Record<string, string> | null;
 }
@@ -183,6 +185,7 @@ export const toState = (s: WireState): NegotiationState => ({
   },
   offerLog: s.offer_log.map(toOffer),
   agentThoughts: s.agent_thoughts.map(toThought),
+  whispers: s.whispers ?? [],
   holdings: s.holdings ?? {},
   closingPositions: s.closing_positions,
   // Only the closing frame carries these; a mid-game snapshot has none.
