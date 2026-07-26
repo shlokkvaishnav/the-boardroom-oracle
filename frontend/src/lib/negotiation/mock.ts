@@ -92,10 +92,13 @@ export class MockNegotiationClient implements NegotiationClient {
   private timers: ReturnType<typeof setTimeout>[] = [];
   private running = false;
 
-  connect() {
+  private connect() {
     this.setStatus("connecting");
     this.after(400, () => this.setStatus("open"));
   }
+
+  /** No sessions to rejoin offline — the scripted run always starts fresh. */
+  async resume() {}
 
   disconnect() {
     this.clearTimers();

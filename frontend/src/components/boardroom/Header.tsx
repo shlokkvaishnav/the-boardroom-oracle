@@ -7,6 +7,8 @@ const statusLabel: Record<ConnectionStatus, string> = {
   open: "LIVE",
   closed: "CLOSED",
   error: "ERROR",
+  "at-capacity": "TABLE FULL",
+  expired: "SESSION ENDED",
 };
 
 export function Header({

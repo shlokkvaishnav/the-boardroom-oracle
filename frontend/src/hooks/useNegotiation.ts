@@ -23,6 +23,12 @@ export function useNegotiation() {
 
   useEffect(() => client.subscribe(setState, setStatus), [client]);
 
+  // Rejoin a negotiation this tab already owns, so a refresh mid-game picks up
+  // where it left off instead of stranding a running session on the backend.
+  useEffect(() => {
+    void client.resume();
+  }, [client]);
+
   const start = useCallback(() => void client.start(), [client]);
   const reset = useCallback(() => {
     setState(initial);

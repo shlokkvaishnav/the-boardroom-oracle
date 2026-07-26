@@ -58,6 +58,27 @@ function Index() {
         recording={micOpen}
       />
 
+      {(status === "at-capacity" || status === "expired") && (
+        <div
+          role="status"
+          className="panel rounded-lg border border-trust-neg/60 px-4 py-3 font-mono text-sm text-foreground"
+        >
+          {status === "at-capacity" ? (
+            <>
+              <span className="font-bold text-trust-neg">TABLE FULL — </span>
+              every seat is taken by another negotiation right now. Rounds are paced to stay inside
+              a shared rate limit, so this clears on its own. Try START again in a few minutes.
+            </>
+          ) : (
+            <>
+              <span className="font-bold text-trust-neg">SESSION ENDED — </span>
+              the negotiation this tab was watching has finished or timed out. Press START for a new
+              one.
+            </>
+          )}
+        </div>
+      )}
+
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[1fr_minmax(280px,30%)]">
         <section className="panel relative min-h-0 overflow-hidden rounded-lg bg-stage">
           <div className="pointer-events-none absolute left-4 top-3 z-10 font-display text-xs font-bold tracking-[0.22em] text-muted-foreground">

@@ -47,7 +47,16 @@ export interface NegotiationState {
   revealedObjectives: Record<string, string> | null;
 }
 
-export type ConnectionStatus = "idle" | "connecting" | "open" | "closed" | "error";
+export type ConnectionStatus =
+  | "idle"
+  | "connecting"
+  | "open"
+  | "closed"
+  | "error"
+  /** The backend is running its maximum number of negotiations. Transient. */
+  | "at-capacity"
+  /** The session id we held no longer resolves — it expired or was reset. */
+  | "expired";
 
 export interface InjectOfferPayload {
   from: string;
@@ -64,7 +73,8 @@ export interface VoiceOfferResult {
 }
 
 export interface NegotiationClient {
-  connect(): void;
+  /** Rejoin a session already in flight, if this tab remembers one. */
+  resume(): Promise<void>;
   disconnect(): void;
   subscribe(
     onState: (state: NegotiationState) => void,
