@@ -127,6 +127,9 @@ All optional except the API key. Copy `.env.example` to `.env`; it is gitignored
 | `WHISPER_MODEL` | `base` | faster-whisper size (`tiny`…`large-v3`). |
 | `WHISPER_COMPUTE_TYPE` | `int8` | `int8` is the right choice on CPU. |
 | `WHISPER_PRELOAD` | `false` | Load the model at boot instead of first use. |
+| `MAX_CONCURRENT_SESSIONS` | `5` | Live negotiations allowed at once. Raising it does **not** speed anything up — see [Concurrent sessions](#concurrent-sessions). |
+| `SESSION_TTL_SECONDS` | `600` | Idle time before a session is swept. |
+| `SESSION_SWEEP_INTERVAL_SECONDS` | `60` | How often the background sweeper runs. |
 | `TAVILY_API_KEY` | *(none)* | Enables the agents' `web_search` tool. Without it a `context_topic` session still runs, just without lookups. See [Live web search](#live-web-search). |
 | `TAVILY_MAX_RESULTS` | `3` | Results per search. Every hit is pasted into the follow-up prompt, so this is a prompt-size dial. |
 | `TAVILY_TIMEOUT_SECONDS` | `10.0` | Per-search timeout. A timeout costs the agent a fact, not its turn. |
@@ -223,6 +226,78 @@ Every frame is `{"type": ..., "payload": {...}}`:
 
 The socket is push-only; the server ignores anything the client sends and uses
 it solely to detect disconnects.
+
+---
+
+## Concurrent sessions
+
+Several negotiations can run at once. Each has its own engine, trust graph,
+offer log and background round loop, keyed by a `session_id` minted by
+`POST /api/session/start`. Every other endpoint is scoped to that id — in the
+**path**, consistently, including the WebSocket.
+
+```
+POST /api/session/start                     -> { "session_id": "a1b2c3d4e5f6" }
+GET  /api/session/{id}/state
+POST /api/session/{id}/inject-offer
+POST /api/session/{id}/voice-offer
+POST /api/session/{id}/reset
+WS   /ws/negotiation/{id}
+```
+
+A frame from one negotiation never reaches a viewer of another, and resetting
+your own session cannot stop anyone else's.
+
+### More users means slower rounds, not more throughput
+
+This is the part worth understanding before wondering why it feels sluggish.
+
+`llm_client.py` holds a **semaphore of one and a 4s start-to-start throttle,
+shared globally across every session**. There is one `LLMClient` for the whole
+process, so an agent turn in session A queues behind an agent turn in session B.
+
+That is deliberate, and it is not a bottleneck to optimise away. The limit being
+protected is a **per-API-key quota**, not a per-session one. Giving each session
+its own client or its own semaphore would fire N concurrent calls at the same
+key and multiply the 429 rate by N. The code says so at the point where someone
+would be tempted to change it, and `tests/test_sessions.py` pins the behaviour:
+six calls fired as if from two sessions still show `max_concurrent == 1`.
+
+The visible consequence, for a 6-round game:
+
+| Live sessions | Plain | With `context_topic` |
+| --- | --- | --- |
+| 1 | ~2 min | ~3–4 min |
+| 3 | ~6 min | ~10 min |
+| 5 (default cap) | ~10 min | ~20 min |
+
+**Concurrency here buys isolation, not speed.** Five people can each watch their
+own negotiation without corrupting each other's; they cannot each watch a fast
+one.
+
+### Capacity
+
+`MAX_CONCURRENT_SESSIONS` (default 5) bounds live games. Beyond it,
+`/api/session/start` returns **503** with a `Retry-After` header and a readable
+message; the frontend shows a "table full" banner rather than an error.
+
+503 rather than 429 on purpose: nothing about the caller is being rate-limited,
+the box is simply full. Only *unfinished* sessions count — a finished game makes
+no provider calls, so holding the next player out on its account would achieve
+nothing.
+
+### Expiry
+
+A session untouched for `SESSION_TTL_SECONDS` (default 600) is swept: its loop
+is stopped, its engine dropped, and the eviction logged. A background sweeper
+runs every `SESSION_SWEEP_INTERVAL_SECONDS`, and `start` also sweeps before
+checking capacity, so nobody is refused on account of sessions that already aged
+out. Any REST read counts as activity, so a session being watched never expires
+under its viewer.
+
+The frontend keeps its id in `sessionStorage`, so a refresh rejoins the game in
+progress; if the id no longer resolves it shows a "session ended" state instead
+of a dead board.
 
 ---
 

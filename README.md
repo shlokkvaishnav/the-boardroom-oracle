@@ -31,6 +31,26 @@ container waits for the API's healthcheck before starting.
 > variable. It must be the URL the *browser* uses (`http://localhost:8000`),
 > not the `api` service name — the REST and WebSocket calls are client-side.
 
+## Running without Docker
+
+Docker is no longer required. `ctranslate2` now ships a wheel for Python 3.13+
+(4.8.1 has `cp314`), so the whole stack — including the Whisper voice pipeline —
+installs and runs natively:
+
+```bash
+cd backend && python -m venv .venv && .venv/Scripts/python -m pip install -e .
+```
+
+Then run the API and the tests with that interpreter:
+
+```bash
+backend/.venv/Scripts/python -m uvicorn app.main:app --reload --port 8000
+```
+
+```bash
+backend/.venv/Scripts/python -m pytest -q
+```
+
 ## Running the backend on its own
 
 No host Python required (and in fact impossible here: `faster-whisper`'s engine
