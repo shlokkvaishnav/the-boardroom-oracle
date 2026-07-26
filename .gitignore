@@ -1,0 +1,31 @@
+# --- Frontend is built separately in Lovable; keep it out of this history ---
+/frontend/
+
+# --- Secrets ---
+.env
+*.env
+!*.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# --- Model / tooling caches ---
+.cache/
+huggingface/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
