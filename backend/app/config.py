@@ -58,6 +58,15 @@ class Settings(BaseSettings):
     whisper_compute_type: str = "int8"
     whisper_preload: bool = False
 
+    # --- Live web search (agent tool) ---
+    #: Without a key the `web_search` tool is never offered to agents and a
+    #: session with a `context_topic` still runs — just without live facts.
+    tavily_api_key: str | None = None
+    #: Results per search. Kept small on purpose: every hit is fed back into the
+    #: follow-up prompt, and a long tool result crowds out the negotiation state.
+    tavily_max_results: int = 3
+    tavily_timeout_seconds: float = 10.0
+
     @property
     def cors_origins(self) -> list[str]:
         """`ALLOWED_ORIGINS` split into a list, blanks dropped."""
@@ -66,6 +75,10 @@ class Settings(BaseSettings):
     @property
     def has_gemini_key(self) -> bool:
         return bool(self.gemini_api_key and self.gemini_api_key.strip())
+
+    @property
+    def has_tavily_key(self) -> bool:
+        return bool(self.tavily_api_key and self.tavily_api_key.strip())
 
 
 @lru_cache(maxsize=1)

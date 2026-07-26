@@ -13,6 +13,8 @@ dependencies = [
     "pydantic-settings>=2.6",
     # Required by FastAPI to parse multipart/form-data — the voice-offer upload.
     "python-multipart>=0.0.12",
+    # Live web search, offered to agents as a function-calling tool.
+    "tavily-python>=0.5",
 ]
 
 [dependency-groups]
