@@ -88,6 +88,8 @@ export interface NegotiationClient {
   start(contextTopic?: string | null): Promise<void>;
   reset(): Promise<void>;
   injectOffer(payload: InjectOfferPayload): Promise<void>;
+  /** Speak into the discussion. Any offer found is a bonus, never required. */
+  say(audio: Blob): Promise<VoiceOfferResult>;
   sendVoiceOffer(audio: Blob): Promise<VoiceOfferResult>;
   /** Plain speech-to-text, with no offer parsing. Used for the spoken topic. */
   transcribe(audio: Blob): Promise<string>;

@@ -165,6 +165,10 @@ export class MockNegotiationClient implements NegotiationClient {
     });
   }
 
+  async say(audio: Blob): Promise<VoiceOfferResult> {
+    return this.sendVoiceOffer(audio);
+  }
+
   async sendVoiceOffer(_audio: Blob): Promise<VoiceOfferResult> {
     await new Promise((r) => setTimeout(r, 900));
     const target = AGENTS[Math.floor(Math.random() * AGENTS.length)];

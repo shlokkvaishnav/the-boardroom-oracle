@@ -40,6 +40,7 @@ export function useNegotiation() {
   const injectOffer = useCallback((p: InjectOfferPayload) => client.injectOffer(p), [client]);
   const sendVoiceOffer = useCallback((b: Blob) => client.sendVoiceOffer(b), [client]);
   const transcribe = useCallback((b: Blob) => client.transcribe(b), [client]);
+  const say = useCallback((b: Blob) => client.say(b), [client]);
 
   return {
     state,
@@ -48,6 +49,7 @@ export function useNegotiation() {
     reset,
     injectOffer,
     sendVoiceOffer,
+    say,
     transcribe,
     isMock: IS_MOCK,
   };

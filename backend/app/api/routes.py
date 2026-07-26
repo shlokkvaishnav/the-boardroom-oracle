@@ -252,6 +252,62 @@ async def reset_session(
     return {"status": "reset", "session_id": session_id}
 
 
+@router.post("/{session_id}/say", response_model=VoiceOfferResponse)
+async def say_something(
+    request: Request,
+    session_id: str,
+    file: UploadFile = File(...),
+    engine: NegotiationEngine = Depends(require_session),
+    transcriber: Transcriber = Depends(get_transcriber),
+) -> VoiceOfferResponse:
+    """Speak into the discussion.
+
+    This is the ordinary way a person joins in: whatever you say lands in the
+    transcript and every agent sees it on their next turn, so they answer you.
+    It costs no round and requires no amount — you can just make a point.
+
+    An offer is parsed opportunistically and returned for confirmation *if* the
+    sentence happened to contain one. It is never required, which is the whole
+    difference from `/voice-offer`: demanding "a party and an amount" from
+    someone trying to ask a question is why speaking felt broken.
+    """
+    audio = await read_audio_upload(file)
+    try:
+        transcription = await transcriber.transcribe(audio, file.filename or "audio.webm")
+    except Exception as exc:
+        logger.exception("transcription failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"transcription unavailable: {exc}",
+        ) from exc
+
+    spoken = transcription.text.strip()
+    if not spoken:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Didn't catch that — nothing was transcribed.",
+        )
+
+    await engine.add_remark(HUMAN_ID, spoken)
+
+    # Opportunistic only: a parse failure is not an error here.
+    parsed = None
+    parser = request.app.state.offer_parser
+    if parser is not None:
+        parsed = await parser.parse(
+            spoken,
+            parties=engine.snapshot().agents,
+            resource=engine.pool.resource,
+            speaker_id=HUMAN_ID,
+        )
+
+    return VoiceOfferResponse(
+        transcript=spoken,
+        parsed_offer=parsed,
+        confidence="high" if transcription.is_clear else "low",
+    )
+
+
 @speech_router.post("/transcribe", response_model=TranscriptResponse)
 async def transcribe_audio(
     file: UploadFile = File(...),

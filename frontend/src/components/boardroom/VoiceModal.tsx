@@ -147,12 +147,13 @@ export function VoiceModal({
         <div className="flex items-start justify-between">
           <div>
             <h2 className="font-display text-xl font-bold tracking-tight text-glow text-agent-4">
-              LIVE VOICE OFFER
+              SAY SOMETHING
             </h2>
             <p className="mt-1 font-mono text-xs text-muted-foreground">
-              {phase === "recording" && "Recording — state your offer clearly."}
+              {phase === "recording" && "Recording — say whatever you want to say."}
               {phase === "processing" && "Transcribing…"}
-              {phase === "preview" && "Review before injecting into the negotiation."}
+              {phase === "preview" &&
+                "Said to the table. Everyone will answer it on their next turn."}
               {phase === "error" && error}
             </p>
           </div>

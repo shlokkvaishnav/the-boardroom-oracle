@@ -483,6 +483,26 @@ class NegotiationEngine:
     # Endgame
     # ------------------------------------------------------------------ #
 
+    async def add_remark(self, agent_id: str, text: str) -> AgentThought:
+        """Put a human contribution into the discussion.
+
+        The whole point of the table is that people can argue with it, so a
+        spoken remark is a first-class turn — it lands in the transcript, is
+        broadcast like any other, and appears in every agent's `recent_remarks`
+        on their next turn, which is what makes them answer it. It costs no
+        round and no offer: you can simply say something.
+        """
+        cleaned = text.strip()
+        if not cleaned:
+            raise OfferRejected("nothing was said")
+
+        remark = AgentThought(agent_id=agent_id, text=cleaned)
+        async with self._lock:
+            self.thoughts.append(remark)
+        await self._emit(ThoughtMessage(payload=remark))
+        logger.info("%s said: %s", agent_id, cleaned[:80])
+        return remark
+
     async def _finish(self) -> None:
         async with self._lock:
             self.finished = True

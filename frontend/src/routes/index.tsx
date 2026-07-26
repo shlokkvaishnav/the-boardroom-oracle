@@ -29,7 +29,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const { state, status, start, reset, injectOffer, sendVoiceOffer, transcribe } = useNegotiation();
+  const { state, status, start, reset, injectOffer, say, transcribe } = useNegotiation();
   const [micOpen, setMicOpen] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [started, setStarted] = useState(false);
@@ -145,7 +145,7 @@ function Index() {
         open={micOpen}
         agents={state.agents}
         onClose={() => setMicOpen(false)}
-        onTranscribe={sendVoiceOffer}
+        onTranscribe={say}
         onConfirm={(offer) => void injectOffer(offer)}
       />
     </main>
