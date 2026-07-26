@@ -16,7 +16,8 @@ from google.genai import errors as genai_errors
 from pydantic import BaseModel
 
 from app.config import Settings
-from app.llm_client import LLMClient, LLMError
+from app.llm_client import LLMClient, LLMError, ToolCallRequest
+from app.search import WEB_SEARCH_TOOL
 
 
 class Sample(BaseModel):
@@ -46,9 +47,20 @@ class FakeAPIError(genai_errors.APIError):
         Exception.__init__(self, message)
 
 
+class FakeFunctionCall:
+    """A tool call the model asked for. Use as an outcome to script one."""
+
+    def __init__(self, name: str, args: dict[str, Any] | None = None) -> None:
+        self.name = name
+        self.args = args or {}
+
+
 class FakeResponse:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, function_calls: list[FakeFunctionCall] | None = None) -> None:
         self.text = text
+        # The real SDK exposes this convenience property; it's empty on a
+        # plain text answer, which is exactly the "model declined to search" case.
+        self.function_calls = function_calls or []
 
 
 class FakeModels:
@@ -74,6 +86,10 @@ class FakeModels:
             if isinstance(item, float):  # a slow call, for timeout tests
                 await asyncio.sleep(item)
                 return FakeResponse('{"value": "slow"}')
+            if isinstance(item, FakeFunctionCall):
+                return FakeResponse("", function_calls=[item])
+            if isinstance(item, list):  # several calls in one response
+                return FakeResponse("", function_calls=item)
             return FakeResponse(item)
         finally:
             self.concurrent -= 1
@@ -254,3 +270,86 @@ async def test_a_zero_interval_disables_throttling() -> None:
 
     assert time.monotonic() - start < 0.5
     assert len(models.calls) == 3
+
+
+# --------------------------------------------------------------------------- #
+# Tool calling
+#
+# Phase one of a search-enabled turn: offer the tool, find out whether the model
+# wants it. Deliberately separate from JSON mode — see `generate_with_tools`.
+# --------------------------------------------------------------------------- #
+
+
+async def test_a_requested_tool_call_is_returned() -> None:
+    client, models = build(FakeFunctionCall("web_search", {"query": "copper price"}))
+
+    call = await client.generate_with_tools("hello", [WEB_SEARCH_TOOL])
+
+    assert call == ToolCallRequest(name="web_search", args={"query": "copper price"})
+    assert models.calls[0]["config"].tools == [WEB_SEARCH_TOOL]
+
+
+async def test_a_plain_text_answer_means_no_tool_wanted() -> None:
+    """The prose is discarded; only the search decision matters in phase one."""
+    client, _ = build("I don't need to look anything up.")
+
+    assert await client.generate_with_tools("hello", [WEB_SEARCH_TOOL]) is None
+
+
+async def test_an_empty_response_is_not_an_error_in_tool_mode() -> None:
+    """Unlike JSON mode, silence here just means 'no search'."""
+    client, models = build("")
+
+    assert await client.generate_with_tools("hello", [WEB_SEARCH_TOOL]) is None
+    assert len(models.calls) == 1  # not retried
+
+
+async def test_only_the_first_of_several_tool_calls_is_taken() -> None:
+    """Agents are capped at one search per turn; extra calls are dropped."""
+    client, _ = build(
+        [
+            FakeFunctionCall("web_search", {"query": "first"}),
+            FakeFunctionCall("web_search", {"query": "second"}),
+        ]
+    )
+
+    call = await client.generate_with_tools("hello", [WEB_SEARCH_TOOL])
+
+    assert call is not None and call.args == {"query": "first"}
+
+
+async def test_tool_mode_does_not_request_json_output() -> None:
+    """Sending response_schema alongside tools is what the two-phase design avoids."""
+    client, models = build(FakeFunctionCall("web_search", {"query": "q"}))
+
+    await client.generate_with_tools("hello", [WEB_SEARCH_TOOL], system="be terse")
+    config = models.calls[0]["config"]
+
+    assert config.response_mime_type is None
+    assert config.response_schema is None
+    assert config.system_instruction == "be terse"
+
+
+async def test_tool_calls_are_paced_and_retried_like_any_other_call() -> None:
+    """A tool turn must not bypass the rate-limit gate to feel faster."""
+    client, models = build(
+        FakeAPIError(429), FakeFunctionCall("web_search", {"query": "q"})
+    )
+
+    call = await client.generate_with_tools("hello", [WEB_SEARCH_TOOL])
+
+    assert call is not None
+    assert len(models.calls) == 2
+
+
+async def test_a_tool_call_and_a_structured_call_never_overlap() -> None:
+    """The two phases of one turn share the semaphore-of-one."""
+    client, models = build(
+        FakeFunctionCall("web_search", {"query": "q"}), '{"value": "ok"}'
+    )
+
+    await client.generate_with_tools("phase one", [WEB_SEARCH_TOOL])
+    await client.generate_structured("phase two", Sample)
+
+    assert len(models.calls) == 2
+    assert models.max_concurrent == 1

@@ -24,7 +24,9 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any, TypeVar
 
 from google import genai
 from google.genai import errors as genai_errors
@@ -35,14 +37,53 @@ from app.config import Settings
 
 logger = logging.getLogger("boardroom.llm")
 
-__all__ = ["LLMError", "LLMClient", "build_llm_client"]
+__all__ = ["LLMError", "LLMClient", "ToolCallRequest", "build_llm_client"]
 
 #: Status codes worth waiting out rather than giving up on.
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
+T = TypeVar("T")
+
 
 class LLMError(RuntimeError):
     """Any failure to get a usable response out of the provider."""
+
+
+@dataclass(frozen=True)
+class ToolCallRequest:
+    """A tool the model asked for, with the arguments it chose."""
+
+    name: str
+    args: dict[str, Any]
+
+
+def _interpret_json(response: Any) -> dict[str, Any]:
+    """JSON-mode response -> parsed object."""
+    text = (response.text or "").strip()
+    if not text:
+        raise LLMError("provider returned an empty response")
+    return json.loads(text)
+
+
+def _interpret_tool_call(response: Any) -> ToolCallRequest | None:
+    """Tool-mode response -> the first requested call, or None.
+
+    Only the first call is taken: agents are capped at one search per turn, so
+    a model that asks for several gets the first honoured and the rest dropped
+    rather than fanning out into an unbounded chain.
+
+    An empty response is *not* an error here — a turn where the model neither
+    calls a tool nor says anything simply means "no search", and the caller
+    proceeds to the structured call regardless.
+    """
+    calls = getattr(response, "function_calls", None) or []
+    for call in calls:
+        name = getattr(call, "name", None)
+        if not name:
+            continue
+        args = getattr(call, "args", None)
+        return ToolCallRequest(name=name, args=dict(args) if args else {})
+    return None
 
 
 class LLMClient:
@@ -93,7 +134,49 @@ class LLMClient:
             max_output_tokens=self._settings.gemini_max_output_tokens,
             **({"system_instruction": system} if system else {}),
         )
+        return await self._call(prompt, config, _interpret_json)
 
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        tools: list[types.Tool],
+        *,
+        system: str | None = None,
+    ) -> ToolCallRequest | None:
+        """Offer `tools` and report back whether the model wants to use one.
+
+        Deliberately *not* combined with JSON mode. Gemini rejected
+        `response_schema` alongside function declarations outright until the
+        Gemini 3 series, where the combination is still preview and documented
+        only on a different API surface than `generate_content`. Callers
+        therefore run this first to decide whether to search, then make a
+        separate `generate_structured` call for the actual decision — which
+        keeps the structured path identical to a no-tools turn.
+
+        Returns the requested call, or `None` if the model answered directly
+        (its prose is discarded; only the tool decision matters here).
+
+        Shares the semaphore, throttle and backoff with every other call — a
+        tool-using turn is two paced calls, not one call plus a free one.
+        """
+        config = types.GenerateContentConfig(
+            tools=tools,
+            max_output_tokens=self._settings.gemini_max_output_tokens,
+            **({"system_instruction": system} if system else {}),
+        )
+        return await self._call(prompt, config, _interpret_tool_call)
+
+    async def _call(
+        self,
+        prompt: str,
+        config: types.GenerateContentConfig,
+        interpret: Callable[[Any], T],
+    ) -> T:
+        """One paced, retried, timed-out call. `interpret` reads the response.
+
+        `interpret` raising `LLMError` is treated as a retryable provider
+        failure, which is how an empty response earns another attempt.
+        """
         attempts = max(1, self._settings.llm_max_attempts)
         last_error: Exception | None = None
 
@@ -110,10 +193,7 @@ class LLMClient:
                         ),
                         timeout=self._settings.llm_timeout_seconds,
                     )
-                    text = (response.text or "").strip()
-                    if not text:
-                        raise LLMError("provider returned an empty response")
-                    return json.loads(text)
+                    return interpret(response)
 
                 except json.JSONDecodeError as exc:
                     # JSON mode should make this impossible; treat as terminal
