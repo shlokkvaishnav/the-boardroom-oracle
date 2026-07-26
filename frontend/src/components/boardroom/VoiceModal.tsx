@@ -25,7 +25,9 @@ export function VoiceModal({
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const rafRef = useRef(0);
-  const levelsRef = useRef<Uint8Array | null>(null);
+  // Explicit <ArrayBuffer> — getByteTimeDomainData rejects the default
+  // Uint8Array<ArrayBufferLike>, which could be backed by a SharedArrayBuffer.
+  const levelsRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
 
   const teardown = useCallback(() => {
@@ -96,7 +98,7 @@ export function VoiceModal({
         analyser.fftSize = 512;
         audioCtx.createMediaStreamSource(stream).connect(analyser);
         analyserRef.current = analyser;
-        levelsRef.current = new Uint8Array(analyser.frequencyBinCount);
+        levelsRef.current = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
         const rec = new MediaRecorder(stream);
         rec.ondataavailable = (e) => chunksRef.current.push(e.data);
         rec.start();
@@ -163,9 +165,7 @@ export function VoiceModal({
           </button>
         </div>
 
-        {phase !== "preview" && (
-          <canvas ref={canvasRef} className="mt-6 h-28 w-full" aria-hidden />
-        )}
+        {phase !== "preview" && <canvas ref={canvasRef} className="mt-6 h-28 w-full" aria-hidden />}
 
         {phase === "preview" && result && (
           <div className="mt-6 space-y-4">
@@ -194,8 +194,7 @@ export function VoiceModal({
             )}
             {!result.offer && (
               <p className="font-mono text-xs text-trust-neg">
-                Couldn't turn that into an offer. Close and try again, naming a party and
-                an amount.
+                Couldn't turn that into an offer. Close and try again, naming a party and an amount.
               </p>
             )}
           </div>

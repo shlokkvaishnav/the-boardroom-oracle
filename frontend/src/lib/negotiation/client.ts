@@ -10,9 +10,7 @@ let singleton: NegotiationClient | null = null;
 
 export function getNegotiationClient(): NegotiationClient {
   if (!singleton) {
-    singleton = BACKEND_URL
-      ? new LiveNegotiationClient(BACKEND_URL)
-      : new MockNegotiationClient();
+    singleton = BACKEND_URL ? new LiveNegotiationClient(BACKEND_URL) : new MockNegotiationClient();
   }
   return singleton;
 }

@@ -33,9 +33,7 @@ function Index() {
   const [started, setStarted] = useState(false);
 
   const selectedOffer = selected !== null ? state.offerLog[selected] : undefined;
-  const highlight = selectedOffer
-    ? { source: selectedOffer.from, target: selectedOffer.to }
-    : null;
+  const highlight = selectedOffer ? { source: selectedOffer.from, target: selectedOffer.to } : null;
 
   const handleReset = () => {
     setStarted(false);

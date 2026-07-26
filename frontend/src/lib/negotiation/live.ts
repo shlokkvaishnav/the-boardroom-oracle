@@ -139,10 +139,7 @@ export class LiveNegotiationClient implements NegotiationClient {
     this.ws = null;
   }
 
-  subscribe(
-    onState: (s: NegotiationState) => void,
-    onStatus: (s: ConnectionStatus) => void,
-  ) {
+  subscribe(onState: (s: NegotiationState) => void, onStatus: (s: ConnectionStatus) => void) {
     this.stateSubs.add(onState);
     this.statusSubs.add(onStatus);
     onState(this.state);
@@ -159,7 +156,21 @@ export class LiveNegotiationClient implements NegotiationClient {
 
   async start() {
     this.connect();
-    await this.api("/api/session/start", { method: "POST" });
+    const res = await this.api("/api/session/start", { method: "POST" });
+    if (!res.ok) throw new Error(`start failed (${res.status})`);
+
+    // Seed from REST, because the socket will never send us the roster.
+    // `/ws/negotiation` emits a full `state` frame *only on connect*, and we
+    // connect before this session exists — so the snapshot we hold is the
+    // empty pre-session one. Every frame the engine emits afterwards is a
+    // delta (`round_change`, `thought`, `offer`, `graph_update`) and none of
+    // them carry `agents`. Without this the board renders with no agents and
+    // no trust-graph nodes until the `reveal` frame lands at the very end.
+    const snapshot = await this.api("/api/session/state");
+    if (snapshot.ok) {
+      this.state = toState((await snapshot.json()) as WireState);
+      this.stateSubs.forEach((fn) => fn(this.state));
+    }
   }
 
   async reset() {

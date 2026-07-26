@@ -62,10 +62,7 @@ const THOUGHTS: Record<string, string[]> = {
     "Cooperation restored with ATLAS. Trust edge strengthening.",
     "Ledger balanced. My mirror held.",
   ],
-  human: [
-    "Live offer injected from the floor.",
-    "The operator is rewriting the board mid-round.",
-  ],
+  human: ["Live offer injected from the floor.", "The operator is rewriting the board mid-round."],
 };
 
 const now = () => new Date().toISOString();
@@ -106,10 +103,7 @@ export class MockNegotiationClient implements NegotiationClient {
     this.setStatus("closed");
   }
 
-  subscribe(
-    onState: (s: NegotiationState) => void,
-    onStatus: (s: ConnectionStatus) => void,
-  ) {
+  subscribe(onState: (s: NegotiationState) => void, onStatus: (s: ConnectionStatus) => void) {
     this.stateSubs.add(onState);
     this.statusSubs.add(onStatus);
     onState(this.state);

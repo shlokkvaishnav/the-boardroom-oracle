@@ -1,0 +1,50 @@
+# Full stack: FastAPI backend + TanStack Start frontend.
+# `backend/docker-compose.yml` still exists for backend-only work (it mounts
+# source for --reload); this file is the whole demo, built for production.
+#
+#   docker compose up --build
+#
+# Frontend: http://localhost:3000   API: http://localhost:8000/docs
+name: boardroom-oracle
+
+services:
+  api:
+    build:
+      context: ./backend
+    image: boardroom-oracle-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      # The browser loads the app from :3000, so that origin must be allowed
+      # for the REST calls to succeed.
+      ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:8080"
+    volumes:
+      # Whisper weights are ~150MB and download on first voice request; keep
+      # them across restarts.
+      - whisper-cache:/home/app/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the bundle at build time and used by the *browser*, so it
+        # is the host-visible URL, not the `api` service name.
+        VITE_BACKEND_URL: "http://localhost:8000"
+    image: boardroom-oracle-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  whisper-cache:

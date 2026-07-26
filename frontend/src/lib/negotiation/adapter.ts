@@ -142,10 +142,7 @@ export const toVoiceResult = (r: WireVoiceResult): VoiceOfferResult => ({
  */
 export function mergeOffer(log: Offer[], incoming: Offer): Offer[] {
   const index = log.findIndex(
-    (o) =>
-      o.timestamp === incoming.timestamp &&
-      o.from === incoming.from &&
-      o.to === incoming.to,
+    (o) => o.timestamp === incoming.timestamp && o.from === incoming.from && o.to === incoming.to,
   );
   if (index === -1) return [...log, incoming];
   const next = log.slice();
@@ -156,9 +153,7 @@ export function mergeOffer(log: Offer[], incoming: Offer): Offer[] {
 export function mergeEdges(edges: TrustEdge[], incoming: TrustEdge[]): TrustEdge[] {
   const next = edges.slice();
   for (const edge of incoming) {
-    const index = next.findIndex(
-      (e) => e.source === edge.source && e.target === edge.target,
-    );
+    const index = next.findIndex((e) => e.source === edge.source && e.target === edge.target);
     if (index === -1) next.push(edge);
     else next[index] = edge;
   }

@@ -1,0 +1,12 @@
+# The frontend was hand-pasted on Windows and arrived with CRLF endings, which
+# prettier (endOfLine: lf) rejects. Normalise everything to LF in the index so
+# the lint stays clean regardless of the checkout platform.
+* text=auto eol=lf
+
+# Binary — never touch.
+*.ico binary
+*.png binary
+*.jpg binary
+*.webm binary
+*.zip binary
+*.lock -diff

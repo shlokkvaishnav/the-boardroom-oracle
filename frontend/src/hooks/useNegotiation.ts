@@ -28,10 +28,7 @@ export function useNegotiation() {
     setState(initial);
     void client.reset();
   }, [client]);
-  const injectOffer = useCallback(
-    (p: InjectOfferPayload) => client.injectOffer(p),
-    [client],
-  );
+  const injectOffer = useCallback((p: InjectOfferPayload) => client.injectOffer(p), [client]);
   const sendVoiceOffer = useCallback((b: Blob) => client.sendVoiceOffer(b), [client]);
 
   return { state, status, start, reset, injectOffer, sendVoiceOffer, isMock: IS_MOCK };

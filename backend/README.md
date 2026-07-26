@@ -213,6 +213,19 @@ Each side uses its own language's convention — `snake_case` over the wire and 
 Python, `camelCase` in TypeScript — and **one adapter bridges them**:
 `frontend/src/lib/negotiation/adapter.ts`. Components never see a backend key.
 
+To run the pair locally, `docker compose up --build` from the repo root brings
+up both. To point a **Bun** dev server at a containerised backend instead:
+
+```bash
+docker compose -f backend/docker-compose.yml up --build     # API on :8000
+cd frontend && bun install && VITE_BACKEND_URL=http://localhost:8000 bun run dev
+```
+
+The dev server binds `:8080`, which is already in the `ALLOWED_ORIGINS` default
+— serving it from another port means adding that origin, or the REST calls fail
+CORS while the WebSocket (exempt from CORS) still connects, which is a
+confusing half-working state.
+
 | Backend sends | Frontend uses | Handled by |
 | --- | --- | --- |
 | `is_human`, `agent_id`, `last_offer_accepted` | `isHuman`, `agentId`, `lastOfferAccepted` | `toAgent` / `toThought` / `toEdge` |

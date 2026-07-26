@@ -1,13 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { Agent, AgentThought } from "@/lib/negotiation/types";
 
-export function ThoughtsFeed({
-  thoughts,
-  agents,
-}: {
-  thoughts: AgentThought[];
-  agents: Agent[];
-}) {
+export function ThoughtsFeed({ thoughts, agents }: { thoughts: AgentThought[]; agents: Agent[] }) {
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 

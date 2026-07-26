@@ -305,9 +305,7 @@ export function TrustGraph({
           const px = (1 - k) * (1 - k) * a.x + 2 * (1 - k) * k * qx + k * k * b.x;
           const py = (1 - k) * (1 - k) * a.y + 2 * (1 - k) * k * qy + k * k * b.y;
           ctx.globalAlpha = Math.min(1, e.flow * 1.4) * globalDim;
-          ctx.fillStyle = e.accepted
-            ? resolve("var(--trust-pos)")
-            : resolve("var(--trust-neg)");
+          ctx.fillStyle = e.accepted ? resolve("var(--trust-pos)") : resolve("var(--trust-neg)");
           ctx.beginPath();
           ctx.arc(px, py, 5, 0, Math.PI * 2);
           ctx.fill();
