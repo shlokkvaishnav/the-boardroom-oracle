@@ -140,6 +140,7 @@ async def start_session(
         # Bound to this session, so its frames reach only its own viewers.
         emit=request.app.state.manager.emitter_for(session_id),
         context_topic=context_topic,
+        scribe=request.app.state.scribe,
     )
     try:
         await store.put(engine)

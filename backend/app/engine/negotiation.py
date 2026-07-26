@@ -30,6 +30,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from app.agents.base import Agent, PendingOffer, TurnContext
 from app.agents.opponent_model import BeliefSet
 from app.agents.personas import PERSONAS, Persona, all_agent_infos
+from app.agents.scribe import Scribe
 from app.config import Settings
 from app.engine.budget import CallBudget
 from app.engine.knowledge_graph import KnowledgeDelta, KnowledgeGraph
@@ -53,6 +54,7 @@ from app.models.schemas import (
     NegotiationState,
     OfferRecord,
     OfferSchema,
+    KnowledgeNode,
     Pool,
     SearchRecord,
 )
@@ -98,6 +100,7 @@ class NegotiationEngine:
         emit: EventEmitter | None = None,
         personas: tuple[Persona, ...] = PERSONAS,
         context_topic: str | None = None,
+        scribe: Scribe | None = None,
     ) -> None:
         self.session_id = session_id
         self._agents = list(agents)
@@ -146,6 +149,15 @@ class NegotiationEngine:
         self.ended_early = False
         #: Recomputed at the top of every round from the budget.
         self._allow_search = True
+        #: Links claims to each other once a round. None when there is no key.
+        self._scribe = scribe
+        #: In-flight scribe passes. Held so they can be cancelled on stop and
+        #: awaited before the closing, and so they are not garbage-collected
+        #: mid-flight — asyncio only keeps a weak reference to a bare task.
+        self._scribe_tasks: set[asyncio.Task[None]] = set()
+        #: How many claims the scribe has already been shown, so each pass reads
+        #: only what is new to it.
+        self._claims_read = 0
         self._stopped = False
         self._lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
@@ -183,6 +195,14 @@ class NegotiationEngine:
     async def stop(self) -> None:
         """Halt the loop and wait for it to unwind. Safe to call more than once."""
         self._stopped = True
+
+        # Background passes go first. A reset must not leave a scribe call in
+        # flight against a session that no longer exists, still holding a slot
+        # in the shared provider queue.
+        for scribe_task in list(self._scribe_tasks):
+            scribe_task.cancel()
+        self._scribe_tasks.clear()
+
         task = self._task
         if task is None or task.done():
             return
@@ -243,6 +263,8 @@ class NegotiationEngine:
                 # Worth logging because a search-heavy round costs twice the
                 # calls of a plain one, and the free tier is a per-minute
                 # budget — this is the number to watch in demo rehearsal.
+                self._maybe_scribe(floor)
+
                 logger.info(
                     "round %d of session %s used %d provider call(s); %d spent"
                     " of %s this session%s",
@@ -356,6 +378,126 @@ class NegotiationEngine:
                     belief_set.about(update.agent_id).apply_reported_delta(update.trust_delta)
 
         return events
+
+    # ------------------------------------------------------------------ #
+    # The scribe
+    # ------------------------------------------------------------------ #
+
+    def _maybe_scribe(self, floor: int) -> None:
+        """Start a linking pass for the round that just ended, if it earned one.
+
+        Returns immediately — the pass runs as a background task. This is the
+        whole design constraint: the scribe is an observer, so it must never sit
+        between a player and their turn. Called at the end of a round rather
+        than awaited anywhere in `_take_turn` for exactly that reason.
+        """
+        if self._scribe is None or not self._settings.enable_scribe:
+            return
+
+        unread = self.knowledge.claim_ids[self._claims_read :]
+        if not unread:
+            return  # a round where nobody argued costs nothing
+
+        # Enrichment spends surplus only, never the floor that finishing needs.
+        if not self.budget.can_afford_extra(floor=floor, extra=1):
+            logger.info("skipping scribe pass: no budget surplus")
+            return
+
+        # Marked read and paid for up front. Pre-spending avoids a race with the
+        # next round's floor check, and a call that fails at the provider has
+        # been made regardless — it counts against quota either way.
+        self._claims_read = len(self.knowledge.claim_ids)
+        self.budget.spend(1)
+
+        # Both lists are snapshotted here rather than inside the task. A
+        # backgrounded pass starts whenever the loop next yields, by which time
+        # the following round may have added claims — and a pass reporting on
+        # round 2 that could see round 3's claims as "earlier" is incoherent.
+        # This makes each pass a reading of the table as the round ended.
+        fresh = set(unread)
+        new_claims = [self.knowledge.node(cid) for cid in unread]
+        earlier = [
+            self.knowledge.node(cid)
+            for cid in self.knowledge.claim_ids
+            if cid not in fresh
+        ]
+
+        task = asyncio.create_task(
+            self._run_scribe(new_claims, earlier),
+            name=f"scribe-{self.session_id}-r{self.round}",
+        )
+        self._scribe_tasks.add(task)
+        task.add_done_callback(self._scribe_tasks.discard)
+
+    async def _run_scribe(
+        self, new_claims: list[KnowledgeNode], earlier: list[KnowledgeNode]
+    ) -> None:
+        """One linking pass. Never raises into the loop that spawned it."""
+        try:
+            # No lock around the call: it is a network round-trip, and holding
+            # the lock across it would block human injection for its duration.
+            links = await self._scribe.read(  # type: ignore[union-attr]
+                new_claims=new_claims, earlier_claims=earlier
+            )
+            if not links:
+                return
+
+            delta = KnowledgeDelta()
+            async with self._lock:
+                for link in links:
+                    # `link_claims` is the authority on what may be recorded: it
+                    # refuses anything but supports/contradicts, so a scribe
+                    # cannot invent authorship or a citation here.
+                    added = self.knowledge.link_claims(
+                        source_claim=link.source_claim,
+                        target_claim=link.target_claim,
+                        kind=link.kind,
+                    )
+                    delta.nodes.extend(added.nodes)
+                    delta.edges.extend(added.edges)
+
+            if delta.empty:
+                return
+
+            logger.info(
+                "scribe linked %d claim pair(s) in session %s",
+                len(delta.edges),
+                self.session_id,
+            )
+            await self._emit(
+                KnowledgeUpdateMessage(
+                    payload=KnowledgeUpdatePayload(
+                        nodes=delta.nodes, edges=delta.edges, reason="scribe"
+                    )
+                )
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("scribe pass failed; the discussion is unaffected")
+
+    async def _settle_scribes(self) -> None:
+        """Let outstanding passes finish before the closing snapshot is built.
+
+        Waited on only at the very end, where the game is over and a second or
+        two costs nothing anyone is watching for. It is what stops the final
+        state from missing a link whose call was still in flight when the last
+        round ended.
+
+        Bounded, because the alternative is a session whose ending is hostage to
+        a hung provider call — which is precisely the failure the call budget
+        exists to prevent, and it would be absurd to reintroduce it here. A pass
+        that overruns is cancelled and its links are simply lost.
+        """
+        pending = [task for task in self._scribe_tasks if not task.done()]
+        if not pending:
+            return
+        timeout = self._settings.scribe_settle_timeout_seconds
+        done, still_running = await asyncio.wait(pending, timeout=timeout)
+        for task in still_running:
+            logger.warning("scribe pass did not settle in %.0fs; cancelling", timeout)
+            task.cancel()
+        del done
 
     def _record_claims(
         self, agent_id: str, decision: AgentDecision, searched: list[SearchRecord]
@@ -650,6 +792,11 @@ class NegotiationEngine:
         return remark
 
     async def _finish(self) -> None:
+        # Before the snapshot, not after: a link that arrived while the last
+        # round was closing belongs in the final state, not only in a delta a
+        # client may have missed.
+        await self._settle_scribes()
+
         async with self._lock:
             self.finished = True
             self._closing_positions = self._final_positions()

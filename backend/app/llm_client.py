@@ -197,8 +197,15 @@ class LLMClient:
         schema: type[BaseModel],
         *,
         system: str | None = None,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Return one JSON object matching `schema`.
+
+        `model` overrides the configured one for this call. Extraction work —
+        the scribe, the voice offer parser — is not reasoning work, and routing
+        it to a smaller model keeps it from competing with the negotiators for
+        the same per-minute budget. It still shares this client's queue, because
+        the quota being protected is per key, not per model.
 
         Uses Gemini's native JSON mode (`response_mime_type` +
         `response_schema`) rather than asking for JSON in the prompt — the
@@ -214,7 +221,7 @@ class LLMClient:
             max_output_tokens=self._settings.gemini_max_output_tokens,
             **({"system_instruction": system} if system else {}),
         )
-        return await self._call(prompt, config, _interpret_json)
+        return await self._call(prompt, config, _interpret_json, model=model)
 
     async def generate_with_tools(
         self,
@@ -251,6 +258,8 @@ class LLMClient:
         prompt: str,
         config: types.GenerateContentConfig,
         interpret: Callable[[Any], T],
+        *,
+        model: str | None = None,
     ) -> T:
         """One paced, retried, timed-out call. `interpret` reads the response.
 
@@ -267,7 +276,7 @@ class LLMClient:
                 try:
                     response = await asyncio.wait_for(
                         self._client.aio.models.generate_content(
-                            model=self._settings.gemini_model,
+                            model=model or self._settings.gemini_model,
                             contents=prompt,
                             config=config,
                         ),

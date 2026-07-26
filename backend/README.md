@@ -118,6 +118,9 @@ All optional except the API key. Copy `.env.example` to `.env`; it is gitignored
 | `LLM_BACKOFF_BASE_SECONDS` | `2.0` | First backoff wait; doubles each attempt. |
 | `LLM_TIMEOUT_SECONDS` | `60.0` | Per-call timeout. |
 | `USE_MOCK_AGENTS` | `false` | Force mock agents even with a key — rehearse without spending quota. |
+| `ENABLE_SCRIBE` | `true` | One call per round with claims in it, linking claims that support or contradict each other. Background task, never in a turn; spends only budget surplus. |
+| `SCRIBE_MODEL` | `gemini-3.6-flash-lite` | Small model for the scribe's extraction work. Blank uses `GEMINI_MODEL`. |
+| `SCRIBE_SETTLE_TIMEOUT_SECONDS` | `10.0` | How long the closing waits for a pass still in flight before cancelling it. |
 | `SESSION_CALL_BUDGET` | `60` | Most provider calls one session may spend. `0` is unlimited. Reserves what finishing costs before granting any optional call — see [The call budget](#the-call-budget). |
 | `ALLOWED_ORIGINS` | `localhost:3000,5173,8080` | Comma-separated CORS allowlist. **Add the frontend's deployed URL here.** |
 | `CORS_ALLOW_ALL` | `false` | Dev escape hatch. Also disables credentialed CORS, which the spec forbids alongside a wildcard. |

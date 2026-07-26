@@ -113,6 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.llm_client = None
     app.state.offer_parser = None
     app.state.search_tool = None
+    app.state.scribe = None
 
     # The web_search tool is only built when there's a key for it. Without one,
     # a session with a `context_topic` still runs — the agents simply reason
@@ -130,6 +131,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         app.state.llm_client = build_llm_client(settings)
         app.state.offer_parser = VoiceOfferParser(app.state.llm_client, settings)
+
+        # Shared across sessions like the client it wraps: it holds no state,
+        # and every call it makes queues behind the same global rate limit.
+        if settings.enable_scribe:
+            from app.agents.scribe import Scribe
+
+            app.state.scribe = Scribe(app.state.llm_client, settings)
 
     # `allow_credentials` must be False alongside a wildcard origin — the CORS
     # spec forbids the combination and Starlette silently drops the header.

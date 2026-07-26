@@ -49,6 +49,19 @@ class Settings(BaseSettings):
     #: rehearsing the demo without spending quota.
     use_mock_agents: bool = False
 
+    #: Model for observer work — the scribe's claim linking. Extraction, not
+    #: reasoning, so it goes to something small and fast; blank falls back to
+    #: `gemini_model`. It shares the same client queue either way, because the
+    #: quota being protected is per API key, not per model.
+    scribe_model: str = "gemini-3.6-flash-lite"
+    #: One extra call per round with claims in it, spent only from the budget's
+    #: surplus. Turn it off to run a session at exactly the old call count.
+    enable_scribe: bool = True
+    #: How long the closing waits for a scribe pass still in flight. Bounded on
+    #: purpose: a session's ending must never be hostage to a hung call, so an
+    #: overrunning pass is cancelled and its links lost.
+    scribe_settle_timeout_seconds: float = 10.0
+
     #: Most provider calls one session may spend, across every feature that
     #: makes them. 0 means unlimited.
     #:
