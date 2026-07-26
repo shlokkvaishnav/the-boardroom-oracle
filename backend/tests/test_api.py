@@ -439,3 +439,56 @@ def test_an_overlong_context_topic_is_rejected(api: TestClient) -> None:
     response = api.post("/api/session/start", json={"context_topic": "x" * 501})
 
     assert response.status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# Plain transcription
+#
+# Session-free on purpose: this is how the opening topic is spoken, before any
+# session exists.
+# --------------------------------------------------------------------------- #
+
+
+def test_transcribe_needs_no_session() -> None:
+    app = create_app(make_settings())
+    app.state.transcriber = FakeTranscriber(text="lets talk about the cjp protest")
+    client = TestClient(app)
+
+    body = client.post("/api/transcribe", files=audio_upload()).json()
+
+    assert body == {"transcript": "lets talk about the cjp protest", "confidence": "high"}
+
+
+def test_transcribe_parses_no_offer() -> None:
+    """It is speech-to-text only — offer parsing belongs to /voice-offer."""
+    app = create_app(make_settings())
+    app.state.transcriber = FakeTranscriber()
+    client = TestClient(app)
+
+    body = client.post("/api/transcribe", files=audio_upload()).json()
+
+    assert "parsed_offer" not in body
+
+
+def test_transcribe_reports_low_confidence_on_unclear_audio() -> None:
+    app = create_app(make_settings())
+    app.state.transcriber = FakeTranscriber(avg_logprob=-2.5)
+    client = TestClient(app)
+
+    assert client.post("/api/transcribe", files=audio_upload()).json()["confidence"] == "low"
+
+
+def test_transcribe_rejects_an_empty_upload() -> None:
+    app = create_app(make_settings())
+    app.state.transcriber = FakeTranscriber()
+    client = TestClient(app)
+
+    assert client.post("/api/transcribe", files=audio_upload(b"")).status_code == 400
+
+
+def test_transcribe_is_503_when_whisper_is_unavailable() -> None:
+    app = create_app(make_settings())
+    app.state.transcriber = FakeTranscriber(error=RuntimeError("model unavailable"))
+    client = TestClient(app)
+
+    assert client.post("/api/transcribe", files=audio_upload()).status_code == 503

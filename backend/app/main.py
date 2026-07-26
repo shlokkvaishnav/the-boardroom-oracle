@@ -134,6 +134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok", "service": "boardroom-oracle-backend", "version": VERSION}
 
     app.include_router(routes.router)
+    app.include_router(routes.speech_router)
     app.include_router(ws.router)
 
     return app

@@ -80,10 +80,16 @@ export interface NegotiationClient {
     onState: (state: NegotiationState) => void,
     onStatus: (status: ConnectionStatus) => void,
   ): () => void;
-  start(): Promise<void>;
+  /**
+   * Open the floor. `contextTopic` is the real-world premise every agent is
+   * given, and is also what enables their `web_search` tool.
+   */
+  start(contextTopic?: string | null): Promise<void>;
   reset(): Promise<void>;
   injectOffer(payload: InjectOfferPayload): Promise<void>;
   sendVoiceOffer(audio: Blob): Promise<VoiceOfferResult>;
+  /** Plain speech-to-text, with no offer parsing. Used for the spoken topic. */
+  transcribe(audio: Blob): Promise<string>;
 }
 
 export const TOTAL_ROUNDS = 6;

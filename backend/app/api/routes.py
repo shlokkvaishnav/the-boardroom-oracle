@@ -21,6 +21,7 @@ from app.models.schemas import (
     OfferSchema,
     SessionStartRequest,
     SessionStartResponse,
+    TranscriptResponse,
     VoiceOfferResponse,
 )
 from app.session.store import AtCapacity, SessionStore
@@ -29,6 +30,11 @@ from app.speech.transcribe import Transcriber
 logger = logging.getLogger("boardroom.api")
 
 router = APIRouter(prefix="/api/session", tags=["session"])
+
+#: Speech that isn't about a session. Separate router because `/transcribe` is
+#: reached *before* a session exists — it's how the opening topic is spoken.
+speech_router = APIRouter(prefix="/api", tags=["speech"])
+
 
 #: Reject oversized uploads before they reach Whisper.
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -90,6 +96,21 @@ def build_agents(request: Request, settings: Settings) -> list:
     reason = "USE_MOCK_AGENTS is set" if settings.use_mock_agents else "no GEMINI_API_KEY"
     logger.warning("running with mock agents (%s)", reason)
     return [RandomAgent(persona.id, seed=index) for index, persona in enumerate(PERSONAS)]
+
+
+async def read_audio_upload(file: UploadFile) -> bytes:
+    """Read and size-check an upload. Shared by both speech endpoints."""
+    audio = await file.read()
+    if not audio:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="empty audio upload"
+        )
+    if len(audio) > MAX_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"audio exceeds {MAX_AUDIO_BYTES // (1024 * 1024)}MB",
+        )
+    return audio
 
 
 # --------------------------------------------------------------------------- #
@@ -177,16 +198,7 @@ async def voice_offer(
     then calls `/inject-offer` if the user agrees. Nothing spoken changes the
     game state on its own.
     """
-    audio = await file.read()
-    if not audio:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="empty audio upload"
-        )
-    if len(audio) > MAX_AUDIO_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"audio exceeds {MAX_AUDIO_BYTES // (1024 * 1024)}MB",
-        )
+    audio = await read_audio_upload(file)
 
     try:
         transcription = await transcriber.transcribe(audio, file.filename or "audio.webm")
@@ -238,3 +250,30 @@ async def reset_session(
         return {"status": "no-session", "session_id": session_id}
     logger.info("session %s reset", session_id)
     return {"status": "reset", "session_id": session_id}
+
+
+@speech_router.post("/transcribe", response_model=TranscriptResponse)
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    transcriber: Transcriber = Depends(get_transcriber),
+) -> TranscriptResponse:
+    """Speech to text, and nothing else.
+
+    Deliberately session-free: this is how the opening topic is spoken, which
+    happens before any session exists. It parses nothing and changes no state —
+    `/{id}/voice-offer` is the one that turns speech into an offer.
+    """
+    audio = await read_audio_upload(file)
+    try:
+        transcription = await transcriber.transcribe(audio, file.filename or "audio.webm")
+    except Exception as exc:
+        logger.exception("transcription failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"transcription unavailable: {exc}",
+        ) from exc
+
+    return TranscriptResponse(
+        transcript=transcription.text,
+        confidence="high" if transcription.is_clear else "low",
+    )

@@ -5,6 +5,7 @@ import { TrustGraph } from "@/components/boardroom/TrustGraph";
 import { ThoughtsFeed } from "@/components/boardroom/ThoughtsFeed";
 import { OfferTimeline } from "@/components/boardroom/OfferTimeline";
 import { VoiceModal } from "@/components/boardroom/VoiceModal";
+import { TopicPrompt } from "@/components/boardroom/TopicPrompt";
 import { RevealOverlay } from "@/components/boardroom/RevealOverlay";
 import { useNegotiation } from "@/hooks/useNegotiation";
 
@@ -27,10 +28,12 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const { state, status, start, reset, injectOffer, sendVoiceOffer } = useNegotiation();
+  const { state, status, start, reset, injectOffer, sendVoiceOffer, transcribe } = useNegotiation();
   const [micOpen, setMicOpen] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [started, setStarted] = useState(false);
+  const [topicOpen, setTopicOpen] = useState(false);
+  const [topic, setTopic] = useState<string | null>(null);
 
   const selectedOffer = selected !== null ? state.offerLog[selected] : undefined;
   const highlight = selectedOffer ? { source: selectedOffer.from, target: selectedOffer.to } : null;
@@ -38,7 +41,17 @@ function Index() {
   const handleReset = () => {
     setStarted(false);
     setSelected(null);
+    setTopic(null);
     reset();
+  };
+
+  // START never opens the floor directly — it always asks what the table is
+  // negotiating over first.
+  const handleConfirmTopic = (chosen: string | null) => {
+    setTopicOpen(false);
+    setTopic(chosen);
+    setStarted(true);
+    start(chosen);
   };
 
   return (
@@ -49,10 +62,7 @@ function Index() {
         total={state.pool.total}
         status={status}
         started={started}
-        onStart={() => {
-          setStarted(true);
-          start();
-        }}
+        onStart={() => setTopicOpen(true)}
         onReset={handleReset}
         onMic={() => setMicOpen(true)}
         recording={micOpen}
@@ -85,6 +95,11 @@ function Index() {
             TRUST GRAPH
           </div>
           <TrustGraph state={state} highlight={highlight} dimmed={false} />
+          {topic && (
+            <div className="pointer-events-none absolute right-4 top-3 z-10 max-w-[45%] truncate font-mono text-xs text-agent-4">
+              ON THE TABLE: {topic}
+            </div>
+          )}
           {!started && !state.revealedObjectives && (
             <div className="pointer-events-none absolute inset-0 grid place-items-center">
               <p className="font-mono text-sm text-muted-foreground">
@@ -111,6 +126,13 @@ function Index() {
         agents={state.agents}
         selected={selected}
         onSelect={setSelected}
+      />
+
+      <TopicPrompt
+        open={topicOpen}
+        onCancel={() => setTopicOpen(false)}
+        onConfirm={handleConfirmTopic}
+        onTranscribe={transcribe}
       />
 
       <VoiceModal

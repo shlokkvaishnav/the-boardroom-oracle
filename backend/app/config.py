@@ -6,7 +6,15 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-DEFAULT_ORIGINS = "http://localhost:3000,http://localhost:5173,http://localhost:8080"
+#: `localhost` and `127.0.0.1` are *different origins* to a browser, and Vite
+#: prints both, so opening the one that wasn't listed produced a 400 on the CORS
+#: preflight with nothing in the UI to explain it. Both are listed for every
+#: dev port to remove that trap.
+DEFAULT_ORIGINS = ",".join(
+    f"http://{host}:{port}"
+    for port in (3000, 5173, 8080)
+    for host in ("localhost", "127.0.0.1")
+)
 
 
 class Settings(BaseSettings):

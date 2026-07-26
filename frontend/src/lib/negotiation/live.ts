@@ -222,8 +222,15 @@ export class LiveNegotiationClient implements NegotiationClient {
     this.connect(remembered);
   }
 
-  async start() {
-    const res = await this.api("/api/session/start", { method: "POST" });
+  async start(contextTopic?: string | null) {
+    const topic = contextTopic?.trim();
+    const res = await this.api("/api/session/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      // Always a body now, so the backend sees `context_topic: null` rather
+      // than an absent field when the user skipped the prompt.
+      body: JSON.stringify({ context_topic: topic ? topic : null }),
+    });
 
     if (res.status === 503) {
       // Every slot is taken. Not an error the user caused, and it clears on
@@ -286,6 +293,18 @@ export class LiveNegotiationClient implements NegotiationClient {
     const res = await this.api(this.scoped("voice-offer"), { method: "POST", body: form });
     if (!res.ok) throw new Error(`voice-offer failed (${res.status})`);
     return toVoiceResult((await res.json()) as WireVoiceResult);
+  }
+
+  async transcribe(audio: Blob): Promise<string> {
+    const form = new FormData();
+    form.append("file", audio, "topic.webm");
+    // Not session-scoped: the topic is spoken before a session exists.
+    const res = await this.api("/api/transcribe", { method: "POST", body: form });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => null);
+      throw new Error(detail?.detail ?? `transcribe failed (${res.status})`);
+    }
+    return ((await res.json()) as { transcript: string }).transcript;
   }
 
   private setStatus(s: ConnectionStatus) {

@@ -29,13 +29,26 @@ export function useNegotiation() {
     void client.resume();
   }, [client]);
 
-  const start = useCallback(() => void client.start(), [client]);
+  const start = useCallback(
+    (contextTopic?: string | null) => void client.start(contextTopic),
+    [client],
+  );
   const reset = useCallback(() => {
     setState(initial);
     void client.reset();
   }, [client]);
   const injectOffer = useCallback((p: InjectOfferPayload) => client.injectOffer(p), [client]);
   const sendVoiceOffer = useCallback((b: Blob) => client.sendVoiceOffer(b), [client]);
+  const transcribe = useCallback((b: Blob) => client.transcribe(b), [client]);
 
-  return { state, status, start, reset, injectOffer, sendVoiceOffer, isMock: IS_MOCK };
+  return {
+    state,
+    status,
+    start,
+    reset,
+    injectOffer,
+    sendVoiceOffer,
+    transcribe,
+    isMock: IS_MOCK,
+  };
 }

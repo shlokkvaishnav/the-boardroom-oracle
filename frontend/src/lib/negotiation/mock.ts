@@ -117,7 +117,15 @@ export class MockNegotiationClient implements NegotiationClient {
     };
   }
 
-  async start() {
+  async transcribe(_audio: Blob): Promise<string> {
+    // No backend offline, so no speech-to-text. A canned topic keeps the mic
+    // button honest about what it does rather than silently doing nothing.
+    return "the 2026 copper supply squeeze";
+  }
+
+  async start(_contextTopic?: string | null) {
+    // The scripted run is fixed, so the topic can't steer it. Accepted rather
+    // than rejected so the offline demo takes the same path through the UI.
     if (this.running) return;
     this.running = true;
     if (this.status !== "open") this.connect();

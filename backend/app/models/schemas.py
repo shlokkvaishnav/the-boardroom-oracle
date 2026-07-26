@@ -33,6 +33,7 @@ __all__ = [
     "NegotiationState",
     "SessionStartRequest",
     "SessionStartResponse",
+    "TranscriptResponse",
     "VoiceOfferResponse",
     "Confidence",
 ]
@@ -200,6 +201,16 @@ class SessionStartRequest(ContractModel):
 
 class SessionStartResponse(ContractModel):
     session_id: str
+
+
+class TranscriptResponse(ContractModel):
+    """Plain speech-to-text, with no offer parsing attached.
+
+    Used for the spoken opening topic, which is said before a session exists.
+    """
+
+    transcript: str
+    confidence: Confidence = "low"
 
 
 class VoiceOfferResponse(ContractModel):
