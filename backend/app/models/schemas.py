@@ -22,6 +22,8 @@ __all__ = [
     "ContractModel",
     "utc_now_iso",
     "Pool",
+    "Issue",
+    "OfferLine",
     "AgentInfo",
     "GraphNode",
     "GraphEdge",
@@ -71,10 +73,48 @@ class ContractModel(BaseModel):
 
 
 class Pool(ContractModel):
-    """The single contested resource pool."""
+    """The single contested resource pool.
+
+    Being replaced by `Issue`: one pool makes the table zero-sum by
+    construction, so the only move available to anyone is "give me more".
+    Kept until the migration to `issues` is complete.
+    """
 
     resource: str
     total: float
+
+
+class Issue(ContractModel):
+    """One thing on the table, with its own units and its own quantity.
+
+    Several issues is what makes the negotiation *integrative* rather than
+    merely distributive. With one pool, every gain is someone's loss and the
+    only available argument is about the split. With budget, timeline and
+    headcount on the table — each valued differently by each party — there are
+    trades that leave both sides better off, and finding one is the actual
+    skill the demo is meant to show.
+
+    Single-issue play is exactly the one-element case, so nothing needs a
+    special path.
+    """
+
+    id: str
+    label: str
+    total: float
+    #: Optional unit for display: "weeks", "engineers". Purely cosmetic.
+    unit: str | None = None
+
+
+class OfferLine(ContractModel):
+    """One issue's worth of a proposed transfer.
+
+    An offer is a *bundle* of these, which is the whole point: "you take the
+    budget, I take the deadline" is one offer with two lines, and cannot be
+    expressed at all as a single amount.
+    """
+
+    issue: str
+    amount: float
 
 
 class AgentInfo(ContractModel):
