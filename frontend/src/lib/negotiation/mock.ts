@@ -249,7 +249,7 @@ export class MockNegotiationClient implements NegotiationClient {
       pairs.forEach(([from, to], i) => {
         const at = base + 600 + i * 1900;
         this.after(at, () => {
-          this.pushThought(from, THOUGHTS[from][(r - 1) % THOUGHTS[from].length]);
+          this.pushThought(from, THOUGHTS[from][(r - 1) % THOUGHTS[from].length], r);
           this.pushClaim(from, r);
           const amount = this.amountFor(from, r, i);
           const offer: Offer = {
@@ -329,13 +329,29 @@ export class MockNegotiationClient implements NegotiationClient {
     this.emit();
   }
 
-  private pushThought(agentId: string, text: string) {
+  /** Anchored per agent and nudged each round, so the chart shows movement
+   *  rather than noise. Mirrors what the backend's mock agents do. */
+  private stanceFor(agentId: string, round: number): number {
+    const anchor: Record<string, number> = { a: 0.4, b: -0.7, c: 0.0 };
+    const base = anchor[agentId] ?? 0;
+    const drift = (round / TOTAL_ROUNDS) * 0.5 * (base < 0 ? 1 : -1);
+    return Math.max(-1, Math.min(1, Number((base + drift).toFixed(2))));
+  }
+
+  private pushThought(agentId: string, text: string, round = 0) {
     this.state = {
       ...this.state,
       agentThoughts: [
         ...this.state.agentThoughts,
         // The offline script never searches, so provenance is always empty.
-        { agentId, text, timestamp: now(), searched: [] },
+        {
+          agentId,
+          text,
+          round,
+          stance: round > 0 ? this.stanceFor(agentId, round) : null,
+          timestamp: now(),
+          searched: [],
+        },
       ],
     };
     this.emit();

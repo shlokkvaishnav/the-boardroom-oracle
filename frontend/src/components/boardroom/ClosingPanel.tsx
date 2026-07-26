@@ -1,4 +1,5 @@
-import type { Agent, Offer } from "@/lib/negotiation/types";
+import type { Agent, AgentThought, Offer } from "@/lib/negotiation/types";
+import { StanceDrift } from "./StanceDrift";
 
 /** Net credits moved, purely as a footnote — the argument is the point. */
 function net(agentId: string, offers: Offer[]) {
@@ -26,6 +27,8 @@ export function ClosingPanel({
   agreed,
   unresolved,
   synthesised,
+  thoughts,
+  totalRounds,
   onReset,
 }: {
   agents: Agent[];
@@ -37,6 +40,8 @@ export function ClosingPanel({
   agreed: string[];
   unresolved: string[];
   synthesised: boolean;
+  thoughts: AgentThought[];
+  totalRounds: number;
   onReset: () => void;
 }) {
   // Only parties who actually spoke: the human seat has no closing argument
@@ -84,6 +89,8 @@ export function ClosingPanel({
           );
         })}
       </div>
+      <StanceDrift thoughts={thoughts} agents={agents} totalRounds={totalRounds} />
+
       {synthesised && (
         <div className="grid w-full max-w-3xl gap-3 sm:grid-cols-2">
           {/* Rendered even when empty: a room that converged on nothing is a

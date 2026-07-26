@@ -202,6 +202,15 @@ class AgentThought(ContractModel):
 
     agent_id: str
     text: str
+    #: Which round this was said in. A transcript entry with no round is hard
+    #: to place, and it is what lets stance be plotted against time.
+    round: int = 0
+    #: Where the speaker stood on the topic when they said it, -1 to 1.
+    #:
+    #: Self-reported, so it costs nothing — it rides the response the agent was
+    #: already sending. `None` whenever there is no topic to have a position on,
+    #: which is every session started without one.
+    stance: float | None = None
     timestamp: str = Field(default_factory=utc_now_iso)
     #: Non-empty only on turns where the agent invoked `web_search`.
     searched: list[SearchRecord] = Field(default_factory=list)

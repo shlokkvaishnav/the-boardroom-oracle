@@ -132,6 +132,16 @@ class AgentDecision(BaseModel):
         default_factory=list,
         description="Belief updates about other parties. May be empty.",
     )
+    stance: float | None = Field(
+        default=None,
+        description=(
+            "Where you now stand on the matter under discussion, from -1.0 "
+            "(completely against it) through 0.0 (genuinely undecided) to 1.0 "
+            "(completely for it). Report where you actually are this turn, not "
+            "where you started: if someone made a point that moved you, the "
+            "number should move. Null when there is no matter on the table."
+        ),
+    )
     claims: list[Claim] = Field(
         default_factory=list,
         description=(

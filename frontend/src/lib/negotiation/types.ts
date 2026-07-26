@@ -82,6 +82,11 @@ export interface SearchRecord {
 export interface AgentThought {
   agentId: string;
   text: string;
+  /** Which round it was said in. 0 for anything said outside a round. */
+  round: number;
+  /** Where the speaker stood, -1 to 1. Null when there is no topic to have
+   *  a view on — which is different from 0.0, meaning dead centre. */
+  stance: number | null;
   timestamp: string;
   /** Non-empty only on turns where the agent invoked `web_search`. */
   searched: SearchRecord[];

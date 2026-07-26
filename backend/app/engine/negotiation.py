@@ -76,6 +76,19 @@ RECENT_OFFER_WINDOW = 8
 RECENT_REMARK_WINDOW = 8
 
 
+def _clamp_stance(value: float | None) -> float | None:
+    """Confine a self-reported stance to [-1, 1], dropping nonsense.
+
+    `None` passes through untouched — it means "no topic to have a view on",
+    which is different from "dead centre" and must stay distinguishable.
+    """
+    if value is None:
+        return None
+    if not math.isfinite(value):
+        return None
+    return round(max(-1.0, min(1.0, float(value))), 3)
+
+
 async def _noop_emitter(message: WSMessage) -> None:
     """Default sink, so the engine runs happily with nobody listening."""
     return None
@@ -338,6 +351,11 @@ class NegotiationEngine:
         thought = AgentThought(
             agent_id=agent_id,
             text=decision.thought,
+            round=self.round,
+            # Clamped here rather than trusted: a model asked for -1..1 will
+            # occasionally answer 5, and one wild value would rescale the whole
+            # drift chart and make every real movement look flat.
+            stance=_clamp_stance(getattr(decision, "stance", None)),
             searched=searched,
         )
         self.thoughts.append(thought)
@@ -788,7 +806,7 @@ class NegotiationEngine:
         if not cleaned:
             raise OfferRejected("nothing was said")
 
-        remark = AgentThought(agent_id=agent_id, text=cleaned)
+        remark = AgentThought(agent_id=agent_id, text=cleaned, round=self.round)
         async with self._lock:
             self.thoughts.append(remark)
         await self._emit(ThoughtMessage(payload=remark))

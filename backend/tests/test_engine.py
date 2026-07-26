@@ -581,3 +581,57 @@ async def test_a_broken_listener_does_not_kill_the_negotiation() -> None:
 
     assert engine.finished is True
     assert engine.closing is not None
+
+
+# --------------------------------------------------------------------------- #
+# Stance — did anyone actually move?
+# --------------------------------------------------------------------------- #
+
+
+def _said(text: str, stance: float | None = None) -> AgentDecision:
+    return AgentDecision(action="pass", thought=text, stance=stance)
+
+
+async def test_stance_is_recorded_against_the_round_it_was_said_in() -> None:
+    engine, _, _ = build_engine(
+        {COOP: [_said("Against it.", -0.6), _said("Less sure now.", -0.1)]}, rounds=2
+    )
+
+    await engine.run()
+
+    mine = [t for t in engine.thoughts if t.agent_id == COOP]
+    assert [(t.round, t.stance) for t in mine] == [(1, -0.6), (2, -0.1)]
+
+
+async def test_no_reported_stance_stays_none_rather_than_becoming_zero() -> None:
+    """None means "no view to report"; 0.0 means "dead centre". Not the same."""
+    engine, _, _ = build_engine({COOP: [_said("No topic here.")]}, rounds=1)
+
+    await engine.run()
+
+    assert [t.stance for t in engine.thoughts if t.agent_id == COOP] == [None]
+
+
+@pytest.mark.parametrize(
+    ("reported", "expected"),
+    [(5.0, 1.0), (-9.0, -1.0), (0.5, 0.5), (float("nan"), None), (float("inf"), None)],
+)
+async def test_a_wild_stance_is_clamped_rather_than_trusted(
+    reported: float, expected: float | None
+) -> None:
+    """One unclamped value would rescale the chart and flatten every real move."""
+    engine, _, _ = build_engine({COOP: [_said("Whatever.", reported)]}, rounds=1)
+
+    await engine.run()
+
+    assert [t.stance for t in engine.thoughts if t.agent_id == COOP] == [expected]
+
+
+async def test_a_human_remark_is_placed_in_the_round_it_was_made() -> None:
+    engine, _, _ = build_engine({COOP: [_said("A point.")]}, rounds=2)
+    engine.round = 2
+
+    await engine.add_remark(HUMAN_ID, "I disagree with all of you.")
+
+    said = [t for t in engine.thoughts if t.agent_id == HUMAN_ID]
+    assert said[0].round == 2

@@ -87,6 +87,8 @@ def _sample_state() -> NegotiationState:
             AgentThought(
                 agent_id="coop",
                 text="Opening generously to establish trust.",
+                round=1,
+                stance=0.4,
                 timestamp="2026-07-26T12:00:00+00:00",
             )
         ],
@@ -154,6 +156,10 @@ def test_negotiation_state_serializes_to_exact_expected_json() -> None:
             {
                 "agent_id": "coop",
                 "text": "Opening generously to establish trust.",
+                # Round places the line in the transcript; stance is where the
+                # speaker stood when they said it, null with no topic set.
+                "round": 1,
+                "stance": 0.4,
                 "timestamp": "2026-07-26T12:00:00+00:00",
                 # Present on every thought, empty on the great majority of
                 # turns — only a turn that actually ran `web_search` fills it.

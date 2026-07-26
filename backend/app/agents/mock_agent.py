@@ -102,8 +102,22 @@ class RandomAgent:
         entity = self._rng.choice(entities)
         return [Claim(text=template.format(entity=entity), kind=kind, entities=[entity])]
 
+    def _stance(self, context: TurnContext) -> float | None:
+        """A stance that drifts, so the keyless demo has a chart to draw.
+
+        Anchored per agent and nudged each round, rather than random per
+        turn: a line that wanders at random looks like noise, and the whole
+        point of the chart is to show whether anyone actually moved.
+        """
+        if not context.context_topic:
+            return None
+        anchor = {"cooperator": 0.4, "maximizer": -0.7, "titfortat": 0.0}.get(self.id, 0.0)
+        drift = (context.round / max(1, context.total_rounds)) * 0.5
+        return max(-1.0, min(1.0, anchor + drift * (1 if anchor < 0 else -1)))
+
     async def decide(self, context: TurnContext) -> AgentDecision:
         claims = self._claims(context)
+        stance = self._stance(context)
 
         # Answer the oldest outstanding offer first, so offers don't pile up.
         if context.pending_offers:
@@ -114,18 +128,23 @@ class RandomAgent:
                     target_offer_id=offer.id,
                     thought=f"Taking {offer.amount:g} from {offer.from_id}.",
                     claims=claims,
+                    stance=stance,
                 )
             return AgentDecision(
                 action="reject",
                 target_offer_id=offer.id,
                 thought=f"Not enough from {offer.from_id}.",
                 claims=claims,
+                stance=stance,
             )
 
         others = context.other_party_ids
         if not others or context.my_holdings <= 0 or self._rng.random() < 0.25:
             return AgentDecision(
-                action="pass", thought="Holding position this round.", claims=claims
+                action="pass",
+                thought="Holding position this round.",
+                claims=claims,
+                stance=stance,
             )
 
         target = self._rng.choice(others)
@@ -138,4 +157,5 @@ class RandomAgent:
             offer=ProposedOffer(to=target, resource=context.pool.resource, amount=amount),
             thought=f"Testing {target} with {amount:g}.",
             claims=claims,
+            stance=stance,
         )

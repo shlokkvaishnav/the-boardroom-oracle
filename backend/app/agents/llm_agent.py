@@ -126,6 +126,12 @@ class LLMAgent:
                 "    this turn. Use negative `trust_delta` when someone works against "
                 "    you, positive when they cooperate. Omit parties you learned nothing "
                 "    new about.",
+                "  - `stance` is where you stand on the matter right now, from -1 "
+                "    (completely against) to +1 (completely for), 0 for genuinely "
+                "    undecided. Report where you actually are this turn. If nobody "
+                "    said anything that moved you, repeat your last number — but if "
+                "    someone landed a point, move it. Never moving is not strength; "
+                "    it means you were not listening.",
                 "  - `claims` is the point underneath what you just said, written out "
                 "    plainly so it can be recorded and checked. At most two, and often "
                 "    none: leave it empty if you only agreed, asked a question, or made "

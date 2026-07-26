@@ -155,6 +155,8 @@ function Index() {
               agreed={state.agreed}
               unresolved={state.unresolved}
               synthesised={state.synthesised}
+              thoughts={state.agentThoughts}
+              totalRounds={state.totalRounds}
               onReset={handleReset}
             />
           )}

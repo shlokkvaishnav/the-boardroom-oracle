@@ -57,6 +57,8 @@ export interface WireSearchRecord {
 export interface WireThought {
   agent_id: string;
   text: string;
+  round?: number;
+  stance?: number | null;
   timestamp: string;
   searched?: WireSearchRecord[];
 }
@@ -149,6 +151,8 @@ export const toSearchRecord = (r: WireSearchRecord): SearchRecord => ({
 export const toThought = (t: WireThought): AgentThought => ({
   agentId: t.agent_id,
   text: t.text,
+  round: t.round ?? 0,
+  stance: t.stance ?? null,
   timestamp: t.timestamp,
   searched: (t.searched ?? []).map(toSearchRecord),
 });
