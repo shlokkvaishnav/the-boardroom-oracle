@@ -71,7 +71,11 @@ def build_agents(request: Request, settings: Settings) -> list:
     if settings.has_gemini_key and not settings.use_mock_agents:
         from app.agents.llm_agent import build_llm_agents
 
-        return build_llm_agents(request.app.state.llm_client, settings)
+        return build_llm_agents(
+            request.app.state.llm_client,
+            settings,
+            search=request.app.state.search_tool,
+        )
 
     reason = "USE_MOCK_AGENTS is set" if settings.use_mock_agents else "no GEMINI_API_KEY"
     logger.warning("running with mock agents (%s)", reason)

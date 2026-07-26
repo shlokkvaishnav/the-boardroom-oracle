@@ -147,6 +147,9 @@ def test_negotiation_state_serializes_to_exact_expected_json() -> None:
                 "agent_id": "coop",
                 "text": "Opening generously to establish trust.",
                 "timestamp": "2026-07-26T12:00:00+00:00",
+                # Present on every thought, empty on the great majority of
+                # turns — only a turn that actually ran `web_search` fills it.
+                "searched": [],
             }
         ],
         "revealed_objectives": None,

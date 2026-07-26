@@ -72,6 +72,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.transcriber = WhisperTranscriber(settings)
     app.state.llm_client = None
     app.state.offer_parser = None
+    app.state.search_tool = None
+
+    # The web_search tool is only built when there's a key for it. Without one,
+    # a session with a `context_topic` still runs — the agents simply reason
+    # from the premise without being able to look anything up.
+    if settings.has_tavily_key:
+        from app.search import WebSearchTool
+
+        app.state.search_tool = WebSearchTool(settings)
 
     # Only construct the provider client when there's a key to use; the
     # mock-agent path must work with no credentials at all.

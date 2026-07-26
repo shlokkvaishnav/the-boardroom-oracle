@@ -17,8 +17,9 @@ from app.agents.llm_agent import LLMAgent, build_llm_agents
 from app.agents.opponent_model import BeliefSet
 from app.agents.personas import PERSONAS, all_agent_infos, persona_by_id
 from app.config import Settings
-from app.llm_client import LLMError
+from app.llm_client import LLMError, ToolCallRequest
 from app.models.schemas import OfferRecord, Pool
+from app.search import SearchError, SearchHit
 
 
 def make_settings(**overrides: Any) -> Settings:
@@ -39,6 +40,10 @@ class FakeLLM:
     def __init__(self, *outcomes: Any) -> None:
         self._outcomes = list(outcomes)
         self.calls: list[dict[str, Any]] = []
+        #: Phase-one calls. Empty means the tool was never offered.
+        self.tool_calls: list[dict[str, Any]] = []
+        #: What phase one returns: a ToolCallRequest, None, or an Exception.
+        self.tool_call: Any = None
 
     async def generate_structured(
         self, prompt: str, schema: type, *, system: str | None = None
@@ -50,6 +55,14 @@ class FakeLLM:
         if isinstance(item, Exception):
             raise item
         return item
+
+    async def generate_with_tools(
+        self, prompt: str, tools: list[Any], *, system: str | None = None
+    ) -> Any:
+        self.tool_calls.append({"prompt": prompt, "tools": tools, "system": system})
+        if isinstance(self.tool_call, Exception):
+            raise self.tool_call
+        return self.tool_call
 
 
 def make_context(
@@ -364,3 +377,181 @@ async def test_the_turn_context_topic_reaches_the_system_prompt() -> None:
     await agent.decide(make_context(context_topic="lithium prices"))
 
     assert "lithium prices" in llm.calls[0]["system"]
+
+
+# --------------------------------------------------------------------------- #
+# Web search turns
+#
+# Phase one decides whether to look something up; phase two is the ordinary
+# structured call. The no-topic path must stay exactly one call.
+# --------------------------------------------------------------------------- #
+
+
+class FakeSearch:
+    """Stands in for `WebSearchTool`."""
+
+    def __init__(self, *outcomes: Any) -> None:
+        self._outcomes = list(outcomes) or [[]]
+        self.queries: list[str] = []
+
+    async def search(self, query: str) -> Any:
+        self.queries.append(query)
+        item = self._outcomes.pop(0) if self._outcomes else []
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def hit(snippet: str = "Copper hit $4.20/lb.", url: str = "https://a.example") -> SearchHit:
+    return SearchHit(title="t", snippet=snippet, url=url)
+
+
+def make_searching_agent(
+    *outcomes: Any,
+    tool_call: Any = None,
+    search_outcomes: tuple[Any, ...] = (),
+) -> tuple[LLMAgent, FakeLLM, FakeSearch]:
+    llm = FakeLLM(*outcomes)
+    llm.tool_call = tool_call  # type: ignore[attr-defined]
+    search = FakeSearch(*search_outcomes)
+    agent = LLMAgent(
+        persona_by_id("cooperator"), llm, make_settings(), search=search  # type: ignore[arg-type]
+    )
+    return agent, llm, search
+
+
+async def test_without_a_context_topic_nothing_is_searched_and_one_call_is_made() -> None:
+    """The regression guard: a plain session must be untouched by this feature."""
+    agent, llm, search = make_searching_agent(VALID)
+
+    decision = await agent.decide(make_context())
+
+    assert decision.searched == []
+    assert decision.llm_calls == 1
+    assert search.queries == []
+    assert llm.tool_calls == []
+
+
+async def test_a_topic_offers_the_tool_and_a_declined_search_costs_two_calls() -> None:
+    agent, llm, search = make_searching_agent(VALID, tool_call=None)
+
+    decision = await agent.decide(make_context(context_topic="copper"))
+
+    assert llm.tool_calls, "the tool was never offered"
+    assert decision.searched == []
+    assert decision.llm_calls == 2
+    assert search.queries == []
+
+
+async def test_a_requested_search_runs_and_is_recorded() -> None:
+    agent, llm, search = make_searching_agent(
+        VALID,
+        tool_call=ToolCallRequest(name="web_search", args={"query": "copper price"}),
+        search_outcomes=([hit()],),
+    )
+
+    decision = await agent.decide(make_context(context_topic="copper"))
+
+    assert search.queries == ["copper price"]
+    assert len(decision.searched) == 1
+    assert decision.searched[0].query == "copper price"
+    assert decision.searched[0].source_url == "https://a.example"
+    assert decision.llm_calls == 2
+
+
+async def test_search_results_are_fed_into_the_structured_call() -> None:
+    """The whole point: phase two must actually see what phase one found."""
+    agent, llm, _ = make_searching_agent(
+        VALID,
+        tool_call=ToolCallRequest(name="web_search", args={"query": "copper price"}),
+        search_outcomes=([hit(snippet="Copper hit $4.20/lb.")],),
+    )
+
+    await agent.decide(make_context(context_topic="copper"))
+
+    assert "Copper hit $4.20/lb." in llm.calls[0]["prompt"]
+    assert "https://a.example" in llm.calls[0]["prompt"]
+
+
+async def test_only_one_search_happens_per_turn() -> None:
+    """The cap is structural: phase one runs once, whatever the model wants."""
+    agent, _, search = make_searching_agent(
+        VALID,
+        tool_call=ToolCallRequest(name="web_search", args={"query": "one"}),
+        search_outcomes=([hit()], [hit()]),
+    )
+
+    decision = await agent.decide(make_context(context_topic="copper"))
+
+    assert len(search.queries) == 1
+    assert decision.llm_calls == 2
+
+
+async def test_a_failed_search_degrades_to_an_ordinary_turn() -> None:
+    agent, _, _ = make_searching_agent(
+        VALID,
+        tool_call=ToolCallRequest(name="web_search", args={"query": "copper"}),
+        search_outcomes=(SearchError("provider down"),),
+    )
+
+    decision = await agent.decide(make_context(context_topic="copper"))
+
+    assert decision.action == "offer"  # the turn still happened
+    assert decision.searched == []
+
+
+async def test_a_failed_search_probe_degrades_to_an_ordinary_turn() -> None:
+    agent, _, search = make_searching_agent(VALID, tool_call=LLMError("429 forever"))
+
+    decision = await agent.decide(make_context(context_topic="copper"))
+
+    assert decision.action == "offer"
+    assert decision.searched == []
+    assert search.queries == []
+
+
+async def test_an_empty_query_is_not_searched() -> None:
+    agent, _, search = make_searching_agent(
+        VALID, tool_call=ToolCallRequest(name="web_search", args={"query": "  "})
+    )
+
+    await agent.decide(make_context(context_topic="copper"))
+
+    assert search.queries == []
+
+
+async def test_an_unknown_tool_name_is_ignored() -> None:
+    agent, _, search = make_searching_agent(
+        VALID, tool_call=ToolCallRequest(name="rm_rf", args={"query": "x"})
+    )
+
+    await agent.decide(make_context(context_topic="copper"))
+
+    assert search.queries == []
+
+
+async def test_search_results_survive_the_validation_retry() -> None:
+    """A retry must not reason from less than the first attempt did."""
+    agent, llm, _ = make_searching_agent(
+        {"action": "offer", "thought": "bad", "opponent_updates": []},  # offer missing
+        VALID,
+        tool_call=ToolCallRequest(name="web_search", args={"query": "copper price"}),
+        search_outcomes=([hit(snippet="Copper hit $4.20/lb.")],),
+    )
+
+    decision = await agent.decide(make_context(context_topic="copper"))
+
+    assert "Copper hit $4.20/lb." in llm.calls[1]["prompt"]
+    assert len(decision.searched) == 1
+    assert decision.llm_calls == 3  # probe + two structured attempts
+
+
+async def test_a_turn_with_no_search_tool_configured_never_offers_it() -> None:
+    """No TAVILY_API_KEY: a topic session still runs, just without lookups."""
+    llm = FakeLLM(VALID)
+    agent = LLMAgent(persona_by_id("cooperator"), llm, make_settings())  # type: ignore[arg-type]
+
+    decision = await agent.decide(make_context(context_topic="copper"))
+
+    assert decision.llm_calls == 1
+    assert decision.searched == []

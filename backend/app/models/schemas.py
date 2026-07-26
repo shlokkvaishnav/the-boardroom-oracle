@@ -28,6 +28,7 @@ __all__ = [
     "TrustGraphView",
     "OfferRecord",
     "OfferSchema",
+    "SearchRecord",
     "AgentThought",
     "NegotiationState",
     "SessionStartRequest",
@@ -134,12 +135,26 @@ class OfferRecord(ContractModel):
     timestamp: str = Field(default_factory=utc_now_iso)
 
 
+class SearchRecord(ContractModel):
+    """Provenance for one thing an agent actually looked up.
+
+    Server-stamped from a tool call that really ran — never model output, so it
+    cannot be hallucinated. Empty on the great majority of turns.
+    """
+
+    query: str
+    result_snippet: str
+    source_url: str
+
+
 class AgentThought(ContractModel):
     """One line of agent reasoning, surfaced in the frontend's live feed."""
 
     agent_id: str
     text: str
     timestamp: str = Field(default_factory=utc_now_iso)
+    #: Non-empty only on turns where the agent invoked `web_search`.
+    searched: list[SearchRecord] = Field(default_factory=list)
 
 
 class NegotiationState(ContractModel):

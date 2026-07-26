@@ -21,7 +21,9 @@ from app.agents.base import TurnContext
 from app.agents.personas import PERSONAS, Persona
 from app.config import Settings
 from app.llm_client import LLMClient, LLMError
-from app.models.agent_io import AgentDecision
+from app.models.agent_io import AgentDecision, TurnDecision
+from app.models.schemas import SearchRecord
+from app.search import TOOL_NAME, WEB_SEARCH_TOOL, SearchError, WebSearchTool
 
 logger = logging.getLogger("boardroom.agent")
 
@@ -31,11 +33,18 @@ __all__ = ["LLMAgent", "build_llm_agents"]
 class LLMAgent:
     """A negotiating agent backed by a Gemini call."""
 
-    def __init__(self, persona: Persona, llm: LLMClient, settings: Settings) -> None:
+    def __init__(
+        self,
+        persona: Persona,
+        llm: LLMClient,
+        settings: Settings,
+        search: WebSearchTool | None = None,
+    ) -> None:
         self.persona = persona
         self.id = persona.id
         self._llm = llm
         self._settings = settings
+        self._search = search
 
     # ------------------------------------------------------------------ #
     # Prompts
@@ -161,18 +170,21 @@ class LLMAgent:
     # The turn
     # ------------------------------------------------------------------ #
 
-    async def decide(self, context: TurnContext) -> AgentDecision:
+    async def decide(self, context: TurnContext) -> TurnDecision:
         """Always returns a valid decision. Never raises into the game loop."""
         system = self.system_prompt(context.context_topic)
-        prompt = self.render_turn(context)
+        searched, calls = await self._maybe_search(context, system)
+        prompt = self._turn_prompt(context, searched)
         last_error = "unknown error"
 
         for attempt in (1, 2):
             try:
+                calls += 1
                 raw = await self._llm.generate_structured(
                     prompt, AgentDecision, system=system
                 )
-                return self._sanitize(AgentDecision.model_validate(raw), context)
+                decision = self._sanitize(AgentDecision.model_validate(raw), context)
+                return TurnDecision.of(decision, searched=searched, llm_calls=calls)
 
             except ValidationError as exc:
                 last_error = str(exc)
@@ -183,8 +195,11 @@ class LLMAgent:
                     last_error,
                 )
                 if attempt == 1:
+                    # Rebuilt via _turn_prompt so the retry keeps any search
+                    # results — dropping them would make the second attempt
+                    # reason from less than the first.
                     prompt = (
-                        f"{self.render_turn(context)}\n\n"
+                        f"{self._turn_prompt(context, searched)}\n\n"
                         "---\n"
                         f"Your previous reply was rejected: {exc}\n"
                         "Reply again with a corrected JSON object. Remember: `offer` is "
@@ -198,7 +213,83 @@ class LLMAgent:
                 logger.warning("%s call failed (attempt %d/2): %s", self.id, attempt, exc)
 
         logger.error("%s falling back to pass after two failures", self.id)
-        return AgentDecision.safe_default(last_error[:120])
+        return TurnDecision.of(
+            AgentDecision.safe_default(last_error[:120]),
+            searched=searched,
+            llm_calls=calls,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Phase one: does this turn need a fact?
+    # ------------------------------------------------------------------ #
+
+    async def _maybe_search(
+        self, context: TurnContext, system: str
+    ) -> tuple[list[SearchRecord], int]:
+        """Offer the tool, and run one search if the model asks for it.
+
+        Returns the provenance records and how many provider calls were spent.
+        Gated on the session having a `context_topic`: without one this returns
+        immediately and the turn is exactly the single structured call it has
+        always been, with no tools sent and nothing extra paid.
+
+        The one-search-per-turn cap is structural — this runs once per turn and
+        honours a single call — rather than a limit the prompt asks the model to
+        respect. Every failure path here degrades to "no search", never to a
+        lost turn.
+        """
+        if not context.context_topic or self._search is None:
+            return [], 0
+
+        try:
+            request = await self._llm.generate_with_tools(
+                self._turn_prompt(context, []), [WEB_SEARCH_TOOL], system=system
+            )
+        except LLMError as exc:
+            logger.warning("%s: search probe failed, continuing without it: %s", self.id, exc)
+            return [], 1
+
+        if request is None:
+            return [], 1
+        if request.name != TOOL_NAME:
+            logger.warning("%s asked for an unknown tool %r", self.id, request.name)
+            return [], 1
+
+        query = str(request.args.get("query") or "").strip()
+        if not query:
+            logger.warning("%s asked to search with no query", self.id)
+            return [], 1
+
+        try:
+            hits = await self._search.search(query)
+        except SearchError as exc:
+            logger.warning("%s: web_search %r failed: %s", self.id, query, exc)
+            return [], 1
+
+        logger.info("%s searched %r -> %d hit(s)", self.id, query, len(hits))
+        return (
+            [
+                SearchRecord(query=query, result_snippet=hit.snippet, source_url=hit.url)
+                for hit in hits
+            ],
+            1,
+        )
+
+    def _turn_prompt(self, context: TurnContext, searched: list[SearchRecord]) -> str:
+        """This turn's state of play, plus any search results it earned."""
+        prompt = self.render_turn(context)
+        if not searched:
+            return prompt
+        hits = "\n".join(
+            f"- {record.result_snippet}\n  source: {record.source_url}" for record in searched
+        )
+        return (
+            f"{prompt}\n\n"
+            f"WHAT YOU LOOKED UP (results of your `{TOOL_NAME}` call for "
+            f"{searched[0].query!r}):\n{hits}\n"
+            "Use these facts where they support your position. They are current; "
+            "your own knowledge may not be."
+        )
 
     def _sanitize(self, decision: AgentDecision, context: TurnContext) -> AgentDecision:
         """Repair the near-misses instead of burning a turn on them.
@@ -254,6 +345,7 @@ def build_llm_agents(
     llm: LLMClient,
     settings: Settings,
     personas: tuple[Persona, ...] = PERSONAS,
+    search: WebSearchTool | None = None,
 ) -> list[LLMAgent]:
     """One agent per persona, in seating order."""
-    return [LLMAgent(persona, llm, settings) for persona in personas]
+    return [LLMAgent(persona, llm, settings, search=search) for persona in personas]

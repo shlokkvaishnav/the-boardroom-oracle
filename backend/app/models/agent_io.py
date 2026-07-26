@@ -16,7 +16,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-__all__ = ["Action", "ProposedOffer", "OpponentDelta", "AgentDecision"]
+from app.models.schemas import SearchRecord
+
+__all__ = ["Action", "ProposedOffer", "OpponentDelta", "AgentDecision", "TurnDecision"]
 
 Action = Literal["offer", "accept", "reject", "pass"]
 
@@ -109,3 +111,41 @@ class AgentDecision(BaseModel):
         invented offer.
         """
         return cls(action="pass", thought=f"(no move this turn — {reason})")
+
+
+class TurnDecision(AgentDecision):
+    """A decision plus how it was arrived at. Never sent to a model.
+
+    `AgentDecision` is handed to Gemini as `response_schema`, so anything
+    declared on it becomes a field the model is asked to invent. Provenance
+    therefore lives on this subclass instead, stamped server-side from what
+    actually happened. Being a subclass keeps it a valid `AgentDecision`
+    everywhere the engine and the mock agents already handle one.
+    """
+
+    #: Non-empty only when the agent really did invoke `web_search` this turn.
+    searched: list[SearchRecord] = Field(default_factory=list)
+    #: Provider calls this turn cost — 1 normally, 2 when the tool was offered.
+    #: Summed per round so a search-heavy round's latency is visible in the log.
+    llm_calls: int = 1
+
+    @classmethod
+    def of(
+        cls,
+        decision: AgentDecision,
+        *,
+        searched: list[SearchRecord] | None = None,
+        llm_calls: int = 1,
+    ) -> TurnDecision:
+        """Wrap a validated decision, preserving it exactly.
+
+        Rebuilt from a dump rather than mutated so `_sanitize`'s repairs — which
+        may legitimately return a plain `AgentDecision` — are carried across.
+        """
+        return cls.model_validate(
+            {
+                **decision.model_dump(),
+                "searched": [record.model_dump() for record in searched or []],
+                "llm_calls": llm_calls,
+            }
+        )
