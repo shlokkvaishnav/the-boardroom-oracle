@@ -34,6 +34,7 @@ from app.agents.rapporteur import Rapporteur, RoomSynthesis
 from app.agents.scribe import Scribe
 from app.config import Settings
 from app.engine.budget import CallBudget
+from app.engine.chair import next_speaker
 from app.engine.knowledge_graph import KnowledgeDelta, KnowledgeGraph
 from app.engine.trust_graph import TrustGraph, favorability
 from app.models.agent_io import AgentDecision
@@ -270,10 +271,17 @@ class NegotiationEngine:
                 )
 
                 self._round_llm_calls = 0
-                for agent in self._agents:
+                # Reordered within the round, never across it: `waiting` starts
+                # as everyone and empties exactly once, so a round still costs
+                # one call per agent whoever happens to go first.
+                waiting = [agent.id for agent in self._agents]
+                by_id = {agent.id: agent for agent in self._agents}
+                while waiting:
                     if self._stopped:
                         return
-                    await self._take_turn(agent)
+                    speaker = self._pick_speaker(waiting)
+                    waiting.remove(speaker)
+                    await self._take_turn(by_id[speaker])
                     if self._settings.turn_delay_seconds > 0:
                         await asyncio.sleep(self._settings.turn_delay_seconds)
 
@@ -321,6 +329,40 @@ class NegotiationEngine:
 
         for event in events:
             await self._emit(event)
+
+    def _pick_speaker(self, waiting: list[str]) -> str:
+        """Who acts next this round. Seating order unless the chair is on.
+
+        Reads engine state without the lock, which is safe because the only
+        writer of turn order is this loop. A human remark landing concurrently
+        can change `self.thoughts` mid-decision; the worst outcome is that the
+        chair uses the remark before or after this pick rather than exactly at
+        it, which is not a distinction anyone can observe.
+        """
+        if not self._settings.enable_chair or len(waiting) == 1:
+            return waiting[0]
+
+        last = self.thoughts[-1] if self.thoughts else None
+        # Oldest first, so the offer that has waited longest gets answered.
+        awaiting = [
+            offer.to_id
+            for offer in sorted(self.pending.values(), key=lambda o: o.log_index)
+        ]
+        speaker = next_speaker(
+            waiting,
+            names={party.id: party.name for party in self.parties},
+            last_remark=last.text if last else None,
+            last_speaker=last.agent_id if last else None,
+            awaiting_answer=awaiting,
+        )
+        if speaker != waiting[0]:
+            logger.info(
+                "chair: %s speaks ahead of %s in round %d",
+                speaker,
+                waiting[0],
+                self.round,
+            )
+        return speaker
 
     def _build_context(self, agent_id: str) -> TurnContext:
         return TurnContext(

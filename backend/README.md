@@ -124,6 +124,7 @@ All optional except the API key. Copy `.env.example` to `.env`; it is gitignored
 | `SESSION_CALL_BUDGET` | `60` | Most provider calls one session may spend. `0` is unlimited. Reserves what finishing costs before granting any optional call — see [The call budget](#the-call-budget). |
 | `ALLOWED_ORIGINS` | `localhost:3000,5173,8080` | Comma-separated CORS allowlist. **Add the frontend's deployed URL here.** |
 | `CORS_ALLOW_ALL` | `false` | Dev escape hatch. Also disables credentialed CORS, which the spec forbids alongside a wildcard. |
+| `ENABLE_CHAIR` | `true` | Whoever was just named or challenged answers next, instead of fixed seating order. No provider call; everyone still acts once per round. |
 | `ROUNDS` | `6` | Rounds per game. |
 | `TURN_DELAY_SECONDS` | `2.5` | Pause between turns. Doubles as the demo's pacing dial and as rate-limit headroom. |
 | `POOL_RESOURCE` | `budget` | Name of the contested resource. |

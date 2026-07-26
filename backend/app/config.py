@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     #: are reserved first, and optional enrichment only ever spends the surplus.
     session_call_budget: int = 60
 
+    #: Let whoever was just named or challenged answer next, instead of
+    #: fixed seating order. Costs nothing — it is a rule, not a model. Off
+    #: restores strict round-robin.
+    enable_chair: bool = True
+
     # --- Sessions ---
     #: How many negotiations may run at once. The cap exists because provider
     #: quota is per API *key*, not per session — N concurrent games burn the
