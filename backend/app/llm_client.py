@@ -25,6 +25,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
@@ -37,7 +38,13 @@ from app.config import Settings
 
 logger = logging.getLogger("boardroom.llm")
 
-__all__ = ["LLMError", "LLMClient", "ToolCallRequest", "build_llm_client"]
+__all__ = [
+    "LLMError",
+    "LLMClient",
+    "ToolCallRequest",
+    "build_llm_client",
+    "to_gemini_schema",
+]
 
 #: Status codes worth waiting out rather than giving up on.
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
@@ -55,6 +62,67 @@ class ToolCallRequest:
 
     name: str
     args: dict[str, Any]
+
+
+#: Keys Pydantic emits that Gemini's `response_schema` proto has no field for.
+#: `additionalProperties` is the one that actually breaks a request — it comes
+#: from `extra="forbid"`, which every agent model sets, and the API rejects the
+#: whole call with a 400. The rest are dropped as noise.
+_UNSUPPORTED_SCHEMA_KEYS = frozenset(
+    {"additionalProperties", "title", "default", "$defs", "discriminator"}
+)
+
+
+def to_gemini_schema(model: type[BaseModel]) -> dict[str, Any]:
+    """Pydantic model -> a schema dict Gemini's JSON mode will accept.
+
+    Three reductions, each because the API rejects or ignores the input:
+
+    * `additionalProperties` is stripped. `extra="forbid"` is right for
+      *validating* a response and meaningless as an instruction to the model,
+      but the SDK forwards it and the request 400s.
+    * `$ref`/`$defs` are inlined. Nested models produce references; Gemini's
+      schema has no concept of them.
+    * `anyOf: [X, null]` becomes X plus `nullable`, which is how Gemini spells
+      an optional field.
+
+    Passing a dict rather than the class also keeps the model strict: callers
+    still validate the response against the real Pydantic model afterwards.
+    """
+    raw = model.model_json_schema()
+    defs: dict[str, Any] = raw.pop("$defs", {})
+
+    def reduce(node: Any) -> Any:
+        if isinstance(node, list):
+            return [reduce(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+
+        if "$ref" in node:
+            name = str(node["$ref"]).rsplit("/", 1)[-1]
+            return reduce(deepcopy(defs.get(name, {})))
+
+        # `X | None` -> the non-null branch, marked nullable.
+        if "anyOf" in node:
+            branches = [b for b in node["anyOf"] if b.get("type") != "null"]
+            nullable = len(branches) != len(node["anyOf"])
+            if len(branches) == 1:
+                merged = {
+                    **{k: v for k, v in node.items() if k != "anyOf"},
+                    **branches[0],
+                }
+                reduced = reduce(merged)
+                if nullable:
+                    reduced["nullable"] = True
+                return reduced
+
+        return {
+            key: reduce(value)
+            for key, value in node.items()
+            if key not in _UNSUPPORTED_SCHEMA_KEYS
+        }
+
+    return reduce(raw)  # type: ignore[return-value]
 
 
 def _interpret_json(response: Any) -> dict[str, Any]:
@@ -141,7 +209,8 @@ class LLMClient:
         """
         config = types.GenerateContentConfig(
             response_mime_type="application/json",
-            response_schema=schema,
+            # A reduced dict, not the class: see `to_gemini_schema`.
+            response_schema=to_gemini_schema(schema),
             max_output_tokens=self._settings.gemini_max_output_tokens,
             **({"system_instruction": system} if system else {}),
         )

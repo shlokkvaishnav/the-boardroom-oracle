@@ -16,7 +16,7 @@ from google.genai import errors as genai_errors
 from pydantic import BaseModel
 
 from app.config import Settings
-from app.llm_client import LLMClient, LLMError, ToolCallRequest
+from app.llm_client import LLMClient, LLMError, ToolCallRequest, to_gemini_schema
 from app.search import WEB_SEARCH_TOOL
 
 
@@ -131,7 +131,10 @@ async def test_the_request_uses_gemini_json_mode_with_the_schema() -> None:
     config = models.calls[0]["config"]
 
     assert config.response_mime_type == "application/json"
-    assert config.response_schema is Sample
+    # A reduced dict, not the class: the class carries `additionalProperties`
+    # from `extra="forbid"`, which Gemini rejects with a 400. See
+    # `to_gemini_schema` and the schema-reduction tests below.
+    assert config.response_schema == to_gemini_schema(Sample)
     assert config.system_instruction == "be terse"
     assert models.calls[0]["model"] == "gemini-3.6-flash"
 
@@ -353,3 +356,73 @@ async def test_a_tool_call_and_a_structured_call_never_overlap() -> None:
 
     assert len(models.calls) == 2
     assert models.max_concurrent == 1
+
+
+# --------------------------------------------------------------------------- #
+# Schema reduction
+#
+# Gemini's response_schema is not JSON Schema. Handing it Pydantic's output
+# verbatim 400s the whole request, which surfaced as every agent silently
+# falling back to "pass" — a game that runs and does nothing.
+# --------------------------------------------------------------------------- #
+
+
+async def test_additional_properties_is_stripped() -> None:
+    """`extra="forbid"` renders as additionalProperties, which Gemini rejects."""
+    from app.models.agent_io import AgentDecision
+
+    schema = to_gemini_schema(AgentDecision)
+
+    def has_key(node: Any, key: str) -> bool:
+        if isinstance(node, dict):
+            return key in node or any(has_key(v, key) for v in node.values())
+        if isinstance(node, list):
+            return any(has_key(item, key) for item in node)
+        return False
+
+    assert not has_key(schema, "additionalProperties")
+    assert not has_key(schema, "$ref")
+    assert not has_key(schema, "$defs")
+
+
+async def test_nested_models_are_inlined() -> None:
+    """Nested models become $ref, and Gemini has no concept of references."""
+    from app.models.agent_io import AgentDecision
+
+    schema = to_gemini_schema(AgentDecision)
+    offer = schema["properties"]["offer"]
+
+    # The ProposedOffer body is present inline, not behind a reference.
+    assert "properties" in offer
+    assert set(offer["properties"]) == {"to", "resource", "amount"}
+
+
+async def test_optional_fields_become_nullable() -> None:
+    """Pydantic spells it anyOf[X, null]; Gemini spells it nullable."""
+    from app.models.agent_io import AgentDecision
+
+    schema = to_gemini_schema(AgentDecision)
+
+    assert schema["properties"]["target_offer_id"]["nullable"] is True
+    assert schema["properties"]["target_offer_id"]["type"] == "string"
+    assert "anyOf" not in schema["properties"]["target_offer_id"]
+
+
+async def test_required_fields_and_descriptions_survive() -> None:
+    """The reduction must not strip what actually steers the model."""
+    from app.models.agent_io import AgentDecision
+
+    schema = to_gemini_schema(AgentDecision)
+
+    assert "thought" in schema["required"]
+    assert schema["properties"]["thought"]["description"]
+    assert schema["properties"]["action"]["enum"] == ["offer", "accept", "reject", "pass"]
+
+
+async def test_the_reduced_schema_is_what_reaches_the_provider() -> None:
+    client, models = build('{"value": "ok"}')
+
+    await client.generate_structured("hello", Sample)
+
+    sent = models.calls[0]["config"].response_schema
+    assert isinstance(sent, dict), "a Pydantic class would carry additionalProperties"
