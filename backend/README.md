@@ -127,6 +127,9 @@ All optional except the API key. Copy `.env.example` to `.env`; it is gitignored
 | `WHISPER_MODEL` | `base` | faster-whisper size (`tiny`…`large-v3`). |
 | `WHISPER_COMPUTE_TYPE` | `int8` | `int8` is the right choice on CPU. |
 | `WHISPER_PRELOAD` | `false` | Load the model at boot instead of first use. |
+| `TAVILY_API_KEY` | *(none)* | Enables the agents' `web_search` tool. Without it a `context_topic` session still runs, just without lookups. See [Live web search](#live-web-search). |
+| `TAVILY_MAX_RESULTS` | `3` | Results per search. Every hit is pasted into the follow-up prompt, so this is a prompt-size dial. |
+| `TAVILY_TIMEOUT_SECONDS` | `10.0` | Per-search timeout. A timeout costs the agent a fact, not its turn. |
 
 ---
 
@@ -136,9 +139,25 @@ All optional except the API key. Copy `.env.example` to `.env`; it is gitignored
 Initialises a session and starts the round loop in the background. Any previous
 session is stopped first.
 
+The body is **optional**. A bare POST starts a plain negotiation:
+
 ```json
 { "session_id": "a1b2c3d4e5f6" }
 ```
+
+Supplying a `context_topic` gives every party the same real-world premise and
+switches the agents' `web_search` tool on — see
+[Live web search](#live-web-search).
+
+```bash
+curl -X POST http://localhost:8000/api/session/start \
+  -H 'content-type: application/json' \
+  -d '{"context_topic": "the 2026 copper supply squeeze"}'
+```
+
+`context_topic` is capped at 500 characters, since it is prepended to every
+agent's system prompt. Unknown fields are a `422`, not a silent no-op, so a
+`contextTopic` typo fails loudly.
 
 ### `GET /api/session/state`
 The full `NegotiationState`. `404` if no session is running.
@@ -192,7 +211,7 @@ Every frame is `{"type": ..., "payload": {...}}`:
 | --- | --- | --- |
 | `state` | `NegotiationState` | On connect, and after a reset. |
 | `round_change` | `{round, total_rounds}` | At the start of each round. |
-| `thought` | `{agent_id, text, timestamp}` | Every turn, before the action. |
+| `thought` | `{agent_id, text, timestamp, searched}` | Every turn, before the action. |
 | `offer` | `OfferRecord` | An offer is made, and again when answered (with `accepted` stamped). |
 | `graph_update` | `{edges: [...], reason}` | After every offer event. `reason` is `offer_made`, `offer_accepted` or `offer_rejected`. |
 | `reveal` | `{revealed_objectives, scores, holdings, final_state}` | Once, at the end. |
@@ -204,6 +223,87 @@ Every frame is `{"type": ..., "payload": {...}}`:
 
 The socket is push-only; the server ignores anything the client sends and uses
 it solely to detect disconnects.
+
+---
+
+## Live web search
+
+Agents can look things up mid-negotiation. It is off unless you ask for it: the
+tool is offered only when a session is started with a `context_topic`, so an
+ordinary game is byte-for-byte what it was before the feature existed.
+
+The two halves work together. `context_topic` sets the premise — "you are
+negotiating resource allocation in the context of: the 2026 copper supply
+squeeze" — and `web_search` is how an agent gets a current fact to argue with.
+The premise on its own still works without a Tavily key; agents simply reason
+from it without being able to check anything.
+
+### The turn, in two phases
+
+```
+no context_topic  ->  one structured call. No tools sent. Unchanged.
+context_topic set ->  call 1: tools offered, no schema. "Do you need a fact?"
+                      |- yes -> Tavily runs -> call 2: results in the prompt
+                      `- no  -> call 2 anyway (the prose from call 1 is dropped)
+```
+
+**Why two calls rather than one.** Gemini rejected `response_schema` alongside
+function declarations outright until the Gemini 3 series, where the combination
+is still preview and documented only against the newer Interactions API rather
+than `generate_content`, which is what this service uses. Splitting the turn
+works on any version and leaves the structured call identical to a no-tools
+turn. The cost is that a search-enabled turn is always two calls even when the
+model declines to search — which is exactly why the whole thing is gated.
+
+**One search per turn, enforced in code.** `_maybe_search` runs once and honours
+a single tool call, so a model that asks three times gets one. The cap is not a
+request in the prompt, because worst-case round latency shouldn't depend on the
+model choosing to behave.
+
+**Every failure degrades to an ordinary turn.** Probe fails, search fails, empty
+query, unknown tool name, no key — the agent loses a fact, never its move. Same
+principle as the safe-default decision in `agents/llm_agent.py`.
+
+### `searched`
+
+`AgentThought` carries a `searched` list, non-empty only on turns where a search
+actually ran:
+
+```json
+{ "query": "copper price 2026",
+  "result_snippet": "Copper hit $4.20/lb.",
+  "source_url": "https://a.example" }
+```
+
+It is **stamped server-side from the call that really happened**, and is
+deliberately *not* a field on `AgentDecision`. That model is handed to Gemini as
+`response_schema`, so anything declared on it becomes something the model is
+asked to invent — `searched` would have been hallucinated provenance. It lives
+on the internal `TurnDecision` subclass instead.
+
+### What it costs
+
+Provider calls, for the default three agents over six rounds:
+
+| | Gemini calls | Pacing floor at 4s | Effective RPM |
+| --- | --- | --- | --- |
+| No `context_topic` | 18 | 72s | ~9 |
+| `context_topic` set | 36 | 144s | 15 |
+
+**A search-enabled game sits on the free tier's ~15 RPM ceiling with no
+headroom.** Raise `LLM_MIN_INTERVAL_SECONDS` to 5.0 for these sessions — it
+costs ~30s of runtime and buys margin. Expect a search-enabled six-round game to
+take 3–4 minutes rather than ~2.
+
+Each round logs what it actually spent, which is the number to watch in
+rehearsal:
+
+```
+round 3 of session a1b2c3d4e5f6 used 6 provider call(s)
+```
+
+`boardroom.search` also logs every query and its hit count, so you can see
+exactly what an agent looked up and when.
 
 ---
 
