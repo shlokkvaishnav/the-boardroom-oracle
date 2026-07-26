@@ -63,6 +63,11 @@ EventEmitter = Callable[[WSMessage], Awaitable[None]]
 #: How much of the shared log an agent is shown.
 RECENT_OFFER_WINDOW = 8
 
+#: How much of the table talk an agent is shown. Roughly the last two rounds
+#: with three agents — enough to answer what was just said without the prompt
+#: growing without bound over six rounds.
+RECENT_REMARK_WINDOW = 8
+
 
 async def _noop_emitter(message: WSMessage) -> None:
     """Default sink, so the engine runs happily with nobody listening."""
@@ -238,6 +243,7 @@ class NegotiationEngine:
                 offer for offer in self.pending.values() if offer.to_id == agent_id
             ],
             recent_offers=list(self.offer_log[-RECENT_OFFER_WINDOW:]),
+            recent_remarks=list(self.thoughts[-RECENT_REMARK_WINDOW:]),
             beliefs=self.beliefs.get(agent_id),
             trust_row=self.graph.trust_toward(agent_id, self.graph.party_ids),
             context_topic=self.context_topic,

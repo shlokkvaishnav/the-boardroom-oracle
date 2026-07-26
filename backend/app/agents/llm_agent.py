@@ -60,10 +60,18 @@ class LLMAgent:
         premise = (
             [
                 "THE MATTER ON THE TABLE:",
-                f"  You are negotiating resource allocation in the context of: {context_topic}",
-                "  Every party has been given this same context. It frames what the "
-                "  resource represents and what a good deal looks like — it does not "
-                "  change the rules below.",
+                f"  {context_topic}",
+                "",
+                "  This is a real discussion, and it is the point of the session. Take a "
+                "  clear position on it — one that follows from who you are — and argue "
+                "  it in concrete terms: consequences, precedent, who bears the cost, "
+                "  what happens next. Disagree with the others where you genuinely do. "
+                "  A room where everyone is agreeable and vague is a failed session.",
+                "",
+                "  The budget you are splitting is what the argument is *over*, not what "
+                "  the argument is *about*. Never make the money itself your subject: "
+                "  nobody wants to hear that you are 'building goodwill' or 'testing' "
+                "  someone. Say what you actually think about the matter above.",
                 "",
             ]
             if context_topic
@@ -94,9 +102,20 @@ class LLMAgent:
                 "",
                 "YOUR RESPONSE:",
                 "  Return a single JSON object matching the provided schema.",
-                "  - `thought` is one short first-person line shown live to an audience. "
-                "    Make it revealing about your reasoning but never disclose your "
-                "    hidden objective.",
+                "  - `thought` is what you SAY OUT LOUD at the table, heard by everyone "
+                "    and shown live to an audience. It is an argument, not a caption. "
+                "    Do NOT narrate your move ('I'll offer 2 to test her') — the offer "
+                "    is already visible. Say the *substance*: what you believe about "
+                "    the matter on the table, and why the others should move your way. "
+                "    Name whoever spoke last and answer them — agree, rebut, or press "
+                "    them on something they dodged. Speak like a person in a room, not "
+                "    a bot reporting its state. One or two sentences. Never disclose "
+                "    your hidden objective.",
+                "  - Two things that ruin it, so avoid both. Do not append your reason "
+                "    for the move ('...so I am mirroring her cooperation') — that is "
+                "    narration, and nobody speaks that way. Do not repeat someone's "
+                "    sentence back at them; if you agree, say so in one clause and then "
+                "    add the point they missed.",
                 "  - `opponent_updates` is how your private read on the others changes "
                 "    this turn. Use negative `trust_delta` when someone works against "
                 "    you, positive when they cooperate. Omit parties you learned nothing "
@@ -139,6 +158,16 @@ class LLMAgent:
             if context.beliefs is not None
             else "(no reads on anyone yet)"
         )
+        by_id = {party.id: party.name for party in context.parties}
+        remarks = (
+            "\n".join(
+                f"  {by_id.get(remark.agent_id, remark.agent_id)}"
+                + (" (you)" if remark.agent_id == self.id else "")
+                + f": \"{remark.text}\""
+                for remark in context.recent_remarks
+            )
+            or "  (nobody has spoken yet — you are opening the discussion)"
+        )
 
         return "\n".join(
             [
@@ -155,6 +184,9 @@ class LLMAgent:
                 "",
                 "RECENT ACTIVITY AT THE TABLE:",
                 recent,
+                "",
+                "WHAT HAS BEEN SAID (answer it — do not talk past it):",
+                remarks,
                 "",
                 "YOUR PRIVATE READ ON THE OTHERS:",
                 "  (my_trust is your own running score; public_trust is the visible "

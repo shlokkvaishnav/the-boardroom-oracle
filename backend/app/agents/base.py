@@ -12,7 +12,7 @@ from typing import Protocol, runtime_checkable
 
 from app.agents.opponent_model import BeliefSet
 from app.models.agent_io import AgentDecision
-from app.models.schemas import AgentInfo, OfferRecord, Pool
+from app.models.schemas import AgentInfo, AgentThought, OfferRecord, Pool
 
 __all__ = ["PendingOffer", "TurnContext", "Agent"]
 
@@ -71,6 +71,11 @@ class TurnContext:
     #: identically. Adds context to the same game; it does not change the rules.
     #: Its presence is also what enables the `web_search` tool for the turn.
     context_topic: str | None = None
+    #: What has actually been said at the table, oldest first. Without this an
+    #: agent sees only *amounts* — that Rex sent 1 credit, never Rex's reasoning
+    #: — so it cannot agree with, rebut or press anyone. This is the difference
+    #: between a negotiation and three monologues.
+    recent_remarks: list[AgentThought] = field(default_factory=list)
 
     @property
     def my_holdings(self) -> float:

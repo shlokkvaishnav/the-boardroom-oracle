@@ -192,9 +192,9 @@ class SessionStartRequest(ContractModel):
         default=None,
         max_length=500,
         description=(
-            "A real-world premise shared with every party, e.g. 'the 2026 copper "
-            "supply squeeze'. Adds context to the same game; it does not change "
-            "the rules. Also what enables the agents' web_search tool."
+            "Any real-world matter the table should argue about, in the user's own "
+            "words. Passed through verbatim to every party; nothing in the prompts "
+            "is specific to any subject. Also what enables the web_search tool."
         ),
     )
 

@@ -350,7 +350,10 @@ def test_the_context_topic_appears_in_the_system_prompt() -> None:
     prompt = agent.system_prompt("the 2026 copper supply squeeze")
 
     assert "the 2026 copper supply squeeze" in prompt
-    assert "change the rules" in prompt
+    # The topic must be argued about, not narrated around: these are the
+    # instructions that turn move-captions into an actual exchange.
+    assert "Take a" in prompt and "position" in prompt
+    assert "not what" in prompt  # "...what the argument is *over*, not *about*"
 
 
 def test_no_context_topic_leaves_the_system_prompt_as_it_was() -> None:
