@@ -22,11 +22,14 @@ export function ClosingPanel({
   agents,
   positions,
   offers,
+  resource,
   onReset,
 }: {
   agents: Agent[];
   positions: Record<string, string>;
   offers: Offer[];
+  /** The pool's own name — this footnote used to hardcode "credits". */
+  resource: string;
   onReset: () => void;
 }) {
   // Only parties who actually spoke: the human seat has no closing argument
@@ -68,7 +71,7 @@ export function ClosingPanel({
               </p>
               <p className="mt-4 font-mono text-[11px] text-muted-foreground">
                 net {moved >= 0 ? "+" : ""}
-                {moved} {moved === 1 || moved === -1 ? "credit" : "credits"} moved
+                {moved} {resource} moved
               </p>
             </article>
           );

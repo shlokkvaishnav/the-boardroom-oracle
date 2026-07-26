@@ -1,5 +1,5 @@
 import { Mic, Play, RotateCcw } from "lucide-react";
-import { TOTAL_ROUNDS, type ConnectionStatus } from "@/lib/negotiation/types";
+import { type ConnectionStatus } from "@/lib/negotiation/types";
 
 const statusLabel: Record<ConnectionStatus, string> = {
   idle: "OFFLINE",
@@ -13,6 +13,7 @@ const statusLabel: Record<ConnectionStatus, string> = {
 
 export function Header({
   round,
+  totalRounds,
   resource,
   total,
   status,
@@ -23,6 +24,7 @@ export function Header({
   recording,
 }: {
   round: number;
+  totalRounds: number;
   resource: string;
   total: number;
   status: ConnectionStatus;
@@ -50,8 +52,13 @@ export function Header({
       </div>
 
       <div className="col-span-2 flex flex-wrap items-center gap-x-6 gap-y-2 lg:col-auto">
-        <Stat label="ROUND" value={`${round || 0} / ${TOTAL_ROUNDS}`} />
-        <Stat label={`POOL · ${resource}`} value={total.toLocaleString()} />
+        {/* Both come from the backend, so both read as em-dashes until the
+            first state frame lands rather than asserting a wrong number. */}
+        <Stat label="ROUND" value={`${round || 0} / ${totalRounds || "—"}`} />
+        <Stat
+          label={resource ? `POOL · ${resource.toUpperCase()}` : "POOL"}
+          value={total ? total.toLocaleString() : "—"}
+        />
       </div>
 
       <div className="col-span-2 flex items-center justify-end gap-3 lg:col-auto">

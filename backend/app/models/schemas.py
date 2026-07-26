@@ -166,9 +166,15 @@ class NegotiationState(ContractModel):
 
     `closing_positions` stays `None` until the discussion ends, then carries
     each party's final position on the topic.
+
+    `total_rounds` is carried here as well as on `round_change` so the snapshot
+    is self-describing: a client that connects or resumes mid-game knows how
+    long the session is before the next round tick, rather than having to
+    hardcode it.
     """
 
     round: int
+    total_rounds: int
     pool: Pool
     agents: list[AgentInfo] = Field(default_factory=list)
     trust_graph: TrustGraphView = Field(default_factory=TrustGraphView)

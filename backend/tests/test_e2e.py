@@ -86,7 +86,9 @@ async def test_the_reveal_payload_is_well_formed() -> None:
     assert reveal is not None
 
     assert set(reveal.positions) == {COOP, MAXI, TIT}
-    assert set(reveal.holdings) == {COOP, MAXI, TIT, HUMAN_ID}
+    # Final holdings live on the snapshot, not as a sibling field — one number,
+    # one source.
+    assert set(reveal.final_state.holdings) == {COOP, MAXI, TIT, HUMAN_ID}
     assert all(text.strip() for text in reveal.positions.values())
     assert reveal.final_state.closing_positions == reveal.positions
 
@@ -99,12 +101,12 @@ async def test_the_reveal_serializes_to_json_the_frontend_can_consume() -> None:
     assert frame["type"] == "closing"
     assert set(frame["payload"]) == {
         "positions",
-        "holdings",
         "final_state",
     }
     state = frame["payload"]["final_state"]
     assert set(state) == {
         "round",
+        "total_rounds",
         "pool",
         "agents",
         "trust_graph",

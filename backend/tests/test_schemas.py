@@ -43,6 +43,7 @@ from app.models.schemas import (
 def _sample_state() -> NegotiationState:
     return NegotiationState(
         round=2,
+        total_rounds=6,
         pool=Pool(resource="budget", total=100.0),
         agents=[
             AgentInfo(
@@ -100,6 +101,9 @@ def _sample_state() -> NegotiationState:
 def test_negotiation_state_serializes_to_exact_expected_json() -> None:
     assert _sample_state().wire() == {
         "round": 2,
+        # Carried on the snapshot as well as on `round_change`, so a client that
+        # connects mid-game knows the length without hardcoding it.
+        "total_rounds": 6,
         "pool": {"resource": "budget", "total": 100.0},
         "agents": [
             {
@@ -163,6 +167,7 @@ def test_negotiation_state_serializes_to_exact_expected_json() -> None:
 def test_state_has_exactly_the_contracted_top_level_keys() -> None:
     assert set(_sample_state().wire()) == {
         "round",
+        "total_rounds",
         "pool",
         "agents",
         "trust_graph",
@@ -292,7 +297,6 @@ def test_every_ws_frame_is_type_plus_payload() -> None:
         ClosingMessage(
             payload=ClosingPayload(
                 positions={"coop": "Rushing this through sets a precedent we'll regret."},
-                holdings={"coop": 30.0},
                 final_state=state,
             )
         ),

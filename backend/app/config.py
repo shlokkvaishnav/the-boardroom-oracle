@@ -49,6 +49,17 @@ class Settings(BaseSettings):
     #: rehearsing the demo without spending quota.
     use_mock_agents: bool = False
 
+    #: Most provider calls one session may spend, across every feature that
+    #: makes them. 0 means unlimited.
+    #:
+    #: The arithmetic, at the defaults: three agents over six rounds is 18 calls
+    #: to merely finish, or 36 when a topic is set and each turn also spends a
+    #: search probe. 60 therefore never binds on a normal session — it is a
+    #: ceiling on runaway, not a throttle on ordinary play. What it buys is the
+    #: guarantee in `engine/budget.py`: the calls needed to reach the closing
+    #: are reserved first, and optional enrichment only ever spends the surplus.
+    session_call_budget: int = 60
+
     # --- Sessions ---
     #: How many negotiations may run at once. The cap exists because provider
     #: quota is per API *key*, not per session — N concurrent games burn the

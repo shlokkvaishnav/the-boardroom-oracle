@@ -110,6 +110,7 @@ def test_state_returns_the_contracted_shape_after_start(api: TestClient) -> None
 
     assert set(body) == {
         "round",
+        "total_rounds",
         "pool",
         "agents",
         "trust_graph",

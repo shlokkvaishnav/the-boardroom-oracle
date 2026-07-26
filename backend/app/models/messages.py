@@ -66,10 +66,13 @@ class ClosingPayload(ContractModel):
     argument, taken from what they actually said rather than generated
     separately, so it costs no extra provider call and cannot contradict the
     transcript above it.
+
+    Final holdings are read from `final_state.holdings`. They were briefly a
+    sibling field here too, which meant one number had two sources that could
+    drift apart; the snapshot is the authoritative one.
     """
 
     positions: dict[str, str]
-    holdings: dict[str, float]
     final_state: NegotiationState
 
 

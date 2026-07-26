@@ -60,6 +60,7 @@ function Index() {
     <main className="flex h-screen flex-col gap-3 overflow-hidden bg-background p-3">
       <Header
         round={state.round}
+        totalRounds={state.totalRounds}
         resource={state.pool.resource}
         total={state.pool.total}
         status={status}
@@ -121,6 +122,7 @@ function Index() {
               agents={state.agents}
               positions={state.closingPositions}
               offers={state.offerLog}
+              resource={state.pool.resource}
               onReset={handleReset}
             />
           )}

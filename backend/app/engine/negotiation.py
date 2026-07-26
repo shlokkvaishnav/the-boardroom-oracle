@@ -31,6 +31,7 @@ from app.agents.base import Agent, PendingOffer, TurnContext
 from app.agents.opponent_model import BeliefSet
 from app.agents.personas import PERSONAS, Persona, all_agent_infos
 from app.config import Settings
+from app.engine.budget import CallBudget
 from app.engine.trust_graph import TrustGraph, favorability
 from app.models.agent_io import AgentDecision
 from app.models.messages import (
@@ -128,6 +129,14 @@ class NegotiationEngine:
         self._offer_seq = 0
         #: Provider calls spent in the current round; logged when it ends.
         self._round_llm_calls = 0
+        #: The whole session's allowance. Reserves what finishing costs before
+        #: letting any optional call spend — see `engine/budget.py`.
+        self.budget = CallBudget(settings.session_call_budget or None)
+        #: Set when the budget forced an early ending, so the closing can be
+        #: read as deliberate rather than as a session that simply stopped.
+        self.ended_early = False
+        #: Recomputed at the top of every round from the budget.
+        self._allow_search = True
         self._stopped = False
         self._lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
@@ -140,6 +149,7 @@ class NegotiationEngine:
         """The full public state, in the frontend's shape."""
         return NegotiationState(
             round=self.round,
+            total_rounds=self.total_rounds,
             pool=self.pool,
             agents=list(self.parties),
             trust_graph=self.graph.view(),
@@ -178,6 +188,30 @@ class NegotiationEngine:
             for round_number in range(1, self.total_rounds + 1):
                 if self._stopped:
                     return
+
+                # The floor: one call per agent for every round still to play,
+                # this one included. If that is no longer affordable, stop and
+                # fall through to `_finish()` — breaking rather than returning
+                # is load-bearing, because it is what guarantees a closing frame
+                # even on a session cut short.
+                floor = len(self._agents) * (self.total_rounds - round_number + 1)
+                if not self.budget.can_afford(len(self._agents)):
+                    logger.warning(
+                        "session %s ending at round %d of %d: call budget spent (%d)",
+                        self.session_id,
+                        round_number,
+                        self.total_rounds,
+                        self.budget.spent,
+                    )
+                    self.ended_early = True
+                    break
+
+                # Search is enrichment, so it only ever spends the surplus above
+                # the floor. One probe per agent is what a searching round costs.
+                self._allow_search = self.budget.can_afford_extra(
+                    floor=floor, extra=len(self._agents)
+                )
+
                 async with self._lock:
                     self.round = round_number
                 await self._emit(
@@ -200,10 +234,14 @@ class NegotiationEngine:
                 # calls of a plain one, and the free tier is a per-minute
                 # budget — this is the number to watch in demo rehearsal.
                 logger.info(
-                    "round %d of session %s used %d provider call(s)",
+                    "round %d of session %s used %d provider call(s); %d spent"
+                    " of %s this session%s",
                     round_number,
                     self.session_id,
                     self._round_llm_calls,
+                    self.budget.spent,
+                    "unlimited" if self.budget.unlimited else self.budget.total,
+                    "" if self._allow_search else " (search off: no surplus)",
                 )
 
             await self._finish()
@@ -225,7 +263,11 @@ class NegotiationEngine:
         decision = await agent.decide(context)
 
         async with self._lock:
-            self._round_llm_calls += getattr(decision, "llm_calls", 1)
+            calls = getattr(decision, "llm_calls", 1)
+            self._round_llm_calls += calls
+            # Recorded after the fact: a turn that retried on a validation
+            # failure costs more than one call and can only say so once done.
+            self.budget.spend(calls)
             events = self._apply(agent.id, decision)
 
         for event in events:
@@ -247,6 +289,7 @@ class NegotiationEngine:
             beliefs=self.beliefs.get(agent_id),
             trust_row=self.graph.trust_toward(agent_id, self.graph.party_ids),
             context_topic=self.context_topic,
+            allow_search=self._allow_search,
         )
 
     def _apply(self, agent_id: str, decision: AgentDecision) -> list[WSMessage]:
@@ -542,9 +585,10 @@ class NegotiationEngine:
             self._closing_positions = self._final_positions()
             self.closing = ClosingPayload(
                 positions=self._closing_positions,
-                holdings=dict(self.holdings),
                 # Built after the positions are set, so the snapshot carries
-                # them rather than the mid-discussion `null`.
+                # them rather than the mid-discussion `null`. Final holdings
+                # ride along inside it — this payload used to repeat them as a
+                # sibling field, which was two sources of truth for one number.
                 final_state=self.snapshot(),
             )
             closing = self.closing

@@ -1,5 +1,50 @@
 import { useEffect, useRef } from "react";
-import type { Agent, AgentThought } from "@/lib/negotiation/types";
+import { Search } from "lucide-react";
+import type { Agent, AgentThought, SearchRecord } from "@/lib/negotiation/types";
+
+/** Hostname alone — a full URL would wrap three times in this column. */
+function host(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * What an agent actually looked up before speaking.
+ *
+ * The backend stamps these from a tool call that really ran, so unlike anything
+ * else in the feed they cannot be hallucinated. Worth showing for exactly that
+ * reason: it is the difference between an agent asserting a number and an agent
+ * citing one.
+ */
+function Citations({ searched }: { searched: SearchRecord[] }) {
+  if (searched.length === 0) return null;
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-1.5">
+      <span
+        className="inline-flex items-center gap-1 text-[10px] tracking-wider text-agent-4"
+        title={`searched: ${searched[0].query}`}
+      >
+        <Search className="size-3" />
+        {searched[0].query}
+      </span>
+      {searched.map((record, i) => (
+        <a
+          key={`${record.sourceUrl}-${i}`}
+          href={record.sourceUrl}
+          target="_blank"
+          rel="noreferrer noopener"
+          title={record.snippet}
+          className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-agent-4 hover:text-agent-4"
+        >
+          {host(record.sourceUrl)}
+        </a>
+      ))}
+    </span>
+  );
+}
 
 /**
  * The transcript of the discussion.
@@ -59,6 +104,7 @@ export function ThoughtsFeed({ thoughts, agents }: { thoughts: AgentThought[]; a
               </span>
               <span className="text-border">: </span>
               <span className="text-foreground/85">{t.text}</span>
+              <Citations searched={t.searched} />
             </p>
           );
         })}

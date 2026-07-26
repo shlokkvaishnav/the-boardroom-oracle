@@ -1,5 +1,4 @@
 import {
-  TOTAL_ROUNDS,
   type Agent,
   type ConnectionStatus,
   type InjectOfferPayload,
@@ -8,6 +7,9 @@ import {
   type Offer,
   type VoiceOfferResult,
 } from "./types";
+
+/** The scripted run's own length. The live client reads this off the wire. */
+const TOTAL_ROUNDS = 6;
 
 export const AGENT_PALETTE = [
   "var(--agent-1)",
@@ -71,6 +73,7 @@ const clamp = (n: number, lo = -1, hi = 1) => Math.max(lo, Math.min(hi, n));
 function emptyState(): NegotiationState {
   return {
     round: 0,
+    totalRounds: TOTAL_ROUNDS,
     pool: { resource: "CREDITS", total: 1000 },
     agents: [...AGENTS],
     trustGraph: {
@@ -298,7 +301,11 @@ export class MockNegotiationClient implements NegotiationClient {
   private pushThought(agentId: string, text: string) {
     this.state = {
       ...this.state,
-      agentThoughts: [...this.state.agentThoughts, { agentId, text, timestamp: now() }],
+      agentThoughts: [
+        ...this.state.agentThoughts,
+        // The offline script never searches, so provenance is always empty.
+        { agentId, text, timestamp: now(), searched: [] },
+      ],
     };
     this.emit();
   }

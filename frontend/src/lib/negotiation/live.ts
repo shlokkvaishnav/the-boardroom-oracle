@@ -53,7 +53,10 @@ function clearStoredSessionId() {
 
 const emptyState = (): NegotiationState => ({
   round: 0,
-  pool: { resource: "CREDITS", total: 0 },
+  // Both are placeholders until the first `state` frame lands, which is why
+  // nothing renders a round count or a resource name before then.
+  totalRounds: 0,
+  pool: { resource: "", total: 0 },
   agents: [],
   trustGraph: { nodes: [], edges: [] },
   offerLog: [],
@@ -117,12 +120,17 @@ export class LiveNegotiationClient implements NegotiationClient {
         this.state = toState(payload as unknown as WireState);
         break;
 
-      case "round_change":
+      case "round_change": {
+        // The frame carries `total_rounds` as well as `round`. It used to be
+        // dropped here, which is why the header had to hardcode a six.
+        const tick = payload as unknown as { round: number; total_rounds: number };
         this.state = {
           ...this.state,
-          round: (payload as unknown as { round: number }).round,
+          round: tick.round,
+          totalRounds: tick.total_rounds,
         };
         break;
+      }
 
       case "thought":
         this.state = {

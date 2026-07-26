@@ -273,6 +273,12 @@ class LLMAgent:
         """
         if not context.context_topic or self._search is None:
             return [], 0
+        if not context.allow_search:
+            # The session's budget has no surplus above what finishing costs.
+            # Degrade to the plain single-call turn rather than risk a session
+            # that never reaches its closing.
+            logger.info("%s: skipping search, no budget surplus this turn", self.id)
+            return [], 0
 
         try:
             request = await self._llm.generate_with_tools(

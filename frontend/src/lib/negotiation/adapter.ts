@@ -13,6 +13,7 @@ import type {
   AgentThought,
   NegotiationState,
   Offer,
+  SearchRecord,
   TrustEdge,
   VoiceOfferResult,
 } from "./types";
@@ -45,14 +46,22 @@ export interface WireOffer {
   offer_id?: string;
 }
 
+export interface WireSearchRecord {
+  query: string;
+  result_snippet: string;
+  source_url: string;
+}
+
 export interface WireThought {
   agent_id: string;
   text: string;
   timestamp: string;
+  searched?: WireSearchRecord[];
 }
 
 export interface WireState {
   round: number;
+  total_rounds: number;
   pool: { resource: string; total: number };
   agents: WireAgent[];
   trust_graph: { nodes: Array<{ id: string; label: string }>; edges: WireEdge[] };
@@ -110,14 +119,23 @@ export const toOffer = (o: WireOffer): Offer => ({
   offerId: o.offer_id ?? "",
 });
 
+export const toSearchRecord = (r: WireSearchRecord): SearchRecord => ({
+  query: r.query,
+  // `result_snippet` on the wire; the extra word earns nothing on this side.
+  snippet: r.result_snippet,
+  sourceUrl: r.source_url,
+});
+
 export const toThought = (t: WireThought): AgentThought => ({
   agentId: t.agent_id,
   text: t.text,
   timestamp: t.timestamp,
+  searched: (t.searched ?? []).map(toSearchRecord),
 });
 
 export const toState = (s: WireState): NegotiationState => ({
   round: s.round,
+  totalRounds: s.total_rounds,
   pool: s.pool,
   agents: s.agents.map(toAgent),
   trustGraph: {

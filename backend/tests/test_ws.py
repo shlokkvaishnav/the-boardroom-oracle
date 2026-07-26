@@ -124,6 +124,7 @@ def test_connecting_sends_a_full_state_frame_immediately(api: TestClient) -> Non
     assert frame["type"] == "state"
     assert set(frame["payload"]) == {
         "round",
+        "total_rounds",
         "pool",
         "agents",
         "trust_graph",
@@ -222,7 +223,6 @@ async def test_the_live_stream_carries_the_whole_game_through_to_reveal() -> Non
     assert seen[-1] == "closing"
     assert set(frames(socket)[-1]["payload"]) == {
         "positions",
-        "holdings",
         "final_state",
     }
 

@@ -517,7 +517,7 @@ async def test_reveal_is_emitted_last_and_is_well_formed() -> None:
     assert recorder.types[-1] == "closing"
     payload = recorder.of_type(ClosingMessage)[0].payload
     assert set(payload.positions) == {COOP, MAXI, TIT}
-    assert payload.holdings == engine.holdings
+    assert payload.final_state.holdings == engine.holdings
     assert payload.final_state.closing_positions == payload.positions
 
 

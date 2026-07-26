@@ -6,9 +6,14 @@ import type {
   NegotiationState,
 } from "@/lib/negotiation/types";
 
+// Everything here is a placeholder until the first `state` frame arrives. The
+// pool and round count are the backend's to declare — this used to claim
+// "CREDITS"/1000 against a backend defaulting to budget/100, so the header was
+// briefly wrong on every load.
 const initial: NegotiationState = {
   round: 0,
-  pool: { resource: "CREDITS", total: 1000 },
+  totalRounds: 0,
+  pool: { resource: "", total: 0 },
   agents: [],
   trustGraph: { nodes: [], edges: [] },
   offerLog: [],

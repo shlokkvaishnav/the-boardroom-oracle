@@ -71,6 +71,12 @@ class TurnContext:
     #: identically. Adds context to the same game; it does not change the rules.
     #: Its presence is also what enables the `web_search` tool for the turn.
     context_topic: str | None = None
+    #: Whether this turn may spend a call on the `web_search` probe. The engine
+    #: lowers this when the session's call budget no longer has surplus above
+    #: what finishing costs — searching is enrichment, and enrichment yields to
+    #: reaching the closing. A turn with this false behaves exactly like a turn
+    #: with no topic set: one structured call, no tools offered.
+    allow_search: bool = True
     #: What has actually been said at the table, oldest first. Without this an
     #: agent sees only *amounts* — that Rex sent 1 credit, never Rex's reasoning
     #: — so it cannot agree with, rebut or press anyone. This is the difference

@@ -118,6 +118,7 @@ All optional except the API key. Copy `.env.example` to `.env`; it is gitignored
 | `LLM_BACKOFF_BASE_SECONDS` | `2.0` | First backoff wait; doubles each attempt. |
 | `LLM_TIMEOUT_SECONDS` | `60.0` | Per-call timeout. |
 | `USE_MOCK_AGENTS` | `false` | Force mock agents even with a key — rehearse without spending quota. |
+| `SESSION_CALL_BUDGET` | `60` | Most provider calls one session may spend. `0` is unlimited. Reserves what finishing costs before granting any optional call — see [The call budget](#the-call-budget). |
 | `ALLOWED_ORIGINS` | `localhost:3000,5173,8080` | Comma-separated CORS allowlist. **Add the frontend's deployed URL here.** |
 | `CORS_ALLOW_ALL` | `false` | Dev escape hatch. Also disables credentialed CORS, which the spec forbids alongside a wildcard. |
 | `ROUNDS` | `6` | Rounds per game. |
@@ -377,11 +378,42 @@ Each round logs what it actually spent, which is the number to watch in
 rehearsal:
 
 ```
-round 3 of session a1b2c3d4e5f6 used 6 provider call(s)
+round 3 of session a1b2c3d4e5f6 used 6 provider call(s); 18 spent of 60 this session
 ```
 
 `boardroom.search` also logs every query and its hit count, so you can see
 exactly what an agent looked up and when.
+
+---
+
+## The call budget
+
+`SESSION_CALL_BUDGET` (default 60) caps what one session may spend across every
+feature that makes a provider call. The reason it exists is not cost — it is
+that the worst available failure mode is a session which runs out of quota in
+round four and **never reaches its closing**. The discussion simply stops,
+mid-argument, and the tab waits forever.
+
+`app/engine/budget.py` makes that structurally impossible by splitting spending
+in two:
+
+- **Floor** — one call per agent per remaining round: what it costs to merely
+  play the session out. Always reserved, never spent on anything else.
+- **Surplus** — whatever is above the floor. Optional work draws only from here:
+  the search probe today, and whatever gets added later.
+
+So when the allowance runs thin, search switches itself off (`allow_search` on
+the `TurnContext` goes false and the turn becomes the plain single call it is
+without a topic) while the session still finishes. And if even the floor becomes
+unaffordable, the round loop **breaks rather than returns**, falling through to
+`_finish()` — a cut-short discussion still emits its closing, still reports where
+every party stood, and still conserves the pool. `engine.ended_early` records
+that it happened.
+
+The rule, in one line: **finishing is not optional; everything else is.**
+
+Set it to `0` for unlimited, which is what a paid key wants. The accounting still
+runs, so the spend figure in the log stays truthful.
 
 ---
 
