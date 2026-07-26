@@ -99,6 +99,37 @@ class Scribe:
     def __init__(self, llm: LLMClient, settings: Settings) -> None:
         self._llm = llm
         self._settings = settings
+        #: Consecutive failed passes. Exists because of a real incident: the
+        #: configured model name was one that does not exist, every call 404'd,
+        #: each failure logged a tidy warning and returned no links — and the
+        #: feature was indistinguishable from a scribe finding nothing to link.
+        #: A broken thing must not look like a quiet thing.
+        self._consecutive_failures = 0
+
+    def _note_failure(self, exc: Exception) -> None:
+        """Log a failed pass, escalating once it stops looking like bad luck.
+
+        One failure is a flaky call. Three in a row is a misconfiguration, and
+        it is worth saying so in the terms most likely to be true — because the
+        symptom a person actually sees is a graph with no links in it, which
+        points nowhere near the model name.
+        """
+        self._consecutive_failures += 1
+        if self._consecutive_failures < 3:
+            logger.warning(
+                "scribe pass failed (%d in a row), round gets no links: %s",
+                self._consecutive_failures,
+                exc,
+            )
+            return
+        logger.error(
+            "scribe has failed %d passes in a row and is producing no links at "
+            "all — check SCRIBE_MODEL=%r is a model this key can reach. Last "
+            "error: %s",
+            self._consecutive_failures,
+            self._settings.scribe_model,
+            exc,
+        )
 
     @staticmethod
     def _render(claims: list[KnowledgeNode]) -> str:
@@ -145,8 +176,10 @@ class Scribe:
             reading = ScribeReading.model_validate(raw)
         except (LLMError, ValueError) as exc:
             # Includes ValidationError, which subclasses ValueError.
-            logger.warning("scribe pass failed, round gets no links: %s", exc)
+            self._note_failure(exc)
             return []
+
+        self._consecutive_failures = 0
 
         valid_ids = {claim.id for claim in earlier} | {claim.id for claim in new_claims}
         links = [

@@ -537,3 +537,28 @@ async def test_a_turn_with_no_search_tool_configured_never_offers_it() -> None:
 
     assert decision.llm_calls == 1
     assert decision.searched == []
+
+
+def test_more_claims_than_asked_for_are_trimmed_not_retried() -> None:
+    """A turn that over-claims is repaired in place.
+
+    Rejecting it would cost a whole extra provider call to fix something a
+    slice fixes for free — and the same over-long responses were already
+    overflowing the token cap and costing retries of their own.
+    """
+    from app.agents.llm_agent import MAX_CLAIMS
+    from app.models.agent_io import AgentDecision, Claim
+
+    agent, _ = make_agent()
+    context = make_context()
+    decision = AgentDecision(
+        action="pass",
+        thought="Several points at once.",
+        claims=[Claim(text=f"Point {i}.", kind="value") for i in range(5)],
+    )
+
+    cleaned = agent._sanitize(decision, context)
+
+    assert len(cleaned.claims) == MAX_CLAIMS
+    assert [c.text for c in cleaned.claims] == ["Point 0.", "Point 1."]
+    assert cleaned.action == "pass", "trimming must not disturb the move itself"

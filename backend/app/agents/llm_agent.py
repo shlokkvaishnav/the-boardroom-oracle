@@ -27,7 +27,12 @@ from app.search import TOOL_NAME, WEB_SEARCH_TOOL, SearchError, WebSearchTool
 
 logger = logging.getLogger("boardroom.agent")
 
-__all__ = ["LLMAgent", "build_llm_agents"]
+__all__ = ["LLMAgent", "build_llm_agents", "MAX_CLAIMS"]
+
+#: Claims kept from one turn. Matches what the prompt asks for; enforced here
+#: because a turn that argues two points well is the shape we want, and a turn
+#: listing six is padding that also bloats the response toward the token cap.
+MAX_CLAIMS = 2
 
 
 class LLMAgent:
@@ -344,11 +349,26 @@ class LLMAgent:
     def _sanitize(self, decision: AgentDecision, context: TurnContext) -> AgentDecision:
         """Repair the near-misses instead of burning a turn on them.
 
-        Two failure modes show up often enough to be worth handling rather
-        than retrying: inventing a resource name, and naming a pending offer
-        that doesn't exist. Both are cheap to correct and keep the demo moving —
-        which matters more when every retry costs rate-limit budget.
+        Three failure modes show up often enough to be worth handling rather
+        than retrying: inventing a resource name, naming a pending offer that
+        doesn't exist, and returning more claims than asked for. All are cheap
+        to correct and keep the demo moving — which matters more when every
+        retry costs rate-limit budget.
         """
+        # The prompt asks for at most two. Enforcing that by validation would
+        # turn a slightly over-eager turn into a retry, which costs a whole
+        # extra call to fix something a slice fixes for free.
+        if len(decision.claims) > MAX_CLAIMS:
+            logger.info(
+                "%s returned %d claims; keeping the first %d",
+                self.id,
+                len(decision.claims),
+                MAX_CLAIMS,
+            )
+            decision = decision.model_copy(
+                update={"claims": decision.claims[:MAX_CLAIMS]}
+            )
+
         if decision.action == "offer" and decision.offer is not None:
             if decision.offer.resource != context.pool.resource:
                 logger.info(

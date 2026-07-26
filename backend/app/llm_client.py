@@ -268,8 +268,13 @@ class LLMClient:
         """
         attempts = max(1, self._settings.llm_max_attempts)
         last_error: Exception | None = None
+        #: What was actually spent, which is not `attempts` when a call fails on
+        #: something non-retryable. Reporting the cap instead reads as "we tried
+        #: three times and the provider is flaky" for what was one hard 404.
+        made = 0
 
         for attempt in range(1, attempts + 1):
+            made = attempt
             async with self._gate:
                 await self._throttle()
                 self._last_call_started = time.monotonic()
@@ -311,7 +316,7 @@ class LLMClient:
             # the queue any longer than the throttle already requires.
             await asyncio.sleep(wait)
 
-        raise LLMError(f"gemini call failed after {attempts} attempt(s): {last_error}")
+        raise LLMError(f"gemini call failed after {made} attempt(s): {last_error}")
 
 
 def build_llm_client(settings: Settings) -> LLMClient:

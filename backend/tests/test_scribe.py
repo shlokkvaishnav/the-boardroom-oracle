@@ -131,6 +131,48 @@ async def test_links_naming_claims_that_do_not_exist_are_discarded() -> None:
     assert links == [], "an unknown target and a self-link are both refused"
 
 
+async def test_a_scribe_that_never_works_stops_looking_like_a_quiet_one(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """From a real incident: a bad SCRIBE_MODEL 404'd every pass, each one
+    logged a tidy warning, and the feature was indistinguishable from a scribe
+    with nothing to link. Repeated failure has to escalate."""
+    import logging
+
+    from app.config import Settings
+
+    graph = KnowledgeGraph([(COOP, "Ada")])
+    cid, _ = graph.add_claim(author_id=COOP, text="A.", claim_kind="fact", round=1)
+    scribe = Scribe(
+        FakeLLM(error=LLMError("404 NOT_FOUND")),
+        Settings(_env_file=None, scribe_model="no-such-model"),  # type: ignore[arg-type]
+    )
+
+    with caplog.at_level(logging.WARNING, logger="boardroom.scribe"):
+        for _ in range(3):
+            await scribe.read(new_claims=[graph.node(cid)], earlier_claims=[])
+
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert len(errors) == 1, "the third failure in a row escalates, earlier ones do not"
+    # And it names the thing most likely to actually be wrong.
+    assert "no-such-model" in errors[0].getMessage()
+
+
+async def test_a_working_pass_clears_the_failure_streak() -> None:
+    from app.config import Settings
+
+    graph = KnowledgeGraph([(COOP, "Ada")])
+    cid, _ = graph.add_claim(author_id=COOP, text="A.", claim_kind="fact", round=1)
+    llm = FakeLLM(error=LLMError("transient"))
+    scribe = Scribe(llm, Settings(_env_file=None))  # type: ignore[arg-type]
+
+    await scribe.read(new_claims=[graph.node(cid)], earlier_claims=[])
+    llm.error, llm.payload = None, {"links": []}
+    await scribe.read(new_claims=[graph.node(cid)], earlier_claims=[])
+
+    assert scribe._consecutive_failures == 0
+
+
 async def test_the_scribe_runs_on_the_cheap_model() -> None:
     from app.config import Settings
 

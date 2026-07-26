@@ -33,7 +33,12 @@ class Settings(BaseSettings):
     #: Free-tier eligibility moves; verify the current list in AI Studio
     #: (https://aistudio.google.com/rate-limit) before a demo.
     gemini_model: str = "gemini-3.6-flash"
-    gemini_max_output_tokens: int = 2048
+    #: Raised from 2048 after `claims` was added to the response schema: longer
+    #: responses started hitting the cap and coming back as truncated JSON
+    #: ("Unterminated string"), which the agent's retry ladder recovered from at
+    #: the cost of a whole extra call per occurrence. Headroom is cheaper than
+    #: a retry, because a retry is billed as a second request.
+    gemini_max_output_tokens: int = 4096
 
     #: Free-tier limits are per-minute and low (historically ~15 RPM on flash).
     #: Calls are serialized with at least this gap, so a round of three agents
@@ -53,7 +58,11 @@ class Settings(BaseSettings):
     #: reasoning, so it goes to something small and fast; blank falls back to
     #: `gemini_model`. It shares the same client queue either way, because the
     #: quota being protected is per API key, not per model.
-    scribe_model: str = "gemini-3.6-flash-lite"
+    #: Verify a change here with a real call. `gemini-3.6-flash-lite` looks
+    #: like it should work by analogy with `gemini-3.6-flash` and 404s on
+    #: v1beta — and because a failed scribe pass degrades to "no links", a bad
+    #: name here is invisible except as a feature that quietly never fires.
+    scribe_model: str = "gemini-3.5-flash-lite"
     #: One extra call per round with claims in it, spent only from the budget's
     #: surplus. Turn it off to run a session at exactly the old call count.
     enable_scribe: bool = True

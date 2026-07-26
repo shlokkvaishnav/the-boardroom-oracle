@@ -112,14 +112,14 @@ All optional except the API key. Copy `.env.example` to `.env`; it is gitignored
 | --- | --- | --- |
 | `GEMINI_API_KEY` | *(none)* | Required for real agents. Without it, sessions run on mock agents. |
 | `GEMINI_MODEL` | `gemini-3.6-flash` | Model for agent turns and voice parsing. **Free-tier eligibility changes** — check <https://aistudio.google.com/rate-limit> before a demo. |
-| `GEMINI_MAX_OUTPUT_TOKENS` | `2048` | Per-turn output cap. |
+| `GEMINI_MAX_OUTPUT_TOKENS` | `4096` | Per-turn output cap. Cheaper too high than too low: a truncated response is invalid JSON and costs a full retry. |
 | `LLM_MIN_INTERVAL_SECONDS` | `4.0` | Minimum gap between calls. See [Free-tier rate limits](#free-tier-rate-limits). |
 | `LLM_MAX_ATTEMPTS` | `3` | Attempts per call on 429/5xx, including the first. |
 | `LLM_BACKOFF_BASE_SECONDS` | `2.0` | First backoff wait; doubles each attempt. |
 | `LLM_TIMEOUT_SECONDS` | `60.0` | Per-call timeout. |
 | `USE_MOCK_AGENTS` | `false` | Force mock agents even with a key — rehearse without spending quota. |
 | `ENABLE_SCRIBE` | `true` | One call per round with claims in it, linking claims that support or contradict each other. Background task, never in a turn; spends only budget surplus. |
-| `SCRIBE_MODEL` | `gemini-3.6-flash-lite` | Small model for the scribe's extraction work. Blank uses `GEMINI_MODEL`. |
+| `SCRIBE_MODEL` | `gemini-3.5-flash-lite` | Small model for the scribe's extraction work. Blank uses `GEMINI_MODEL`. |
 | `SCRIBE_SETTLE_TIMEOUT_SECONDS` | `10.0` | How long the closing waits for a pass still in flight before cancelling it. |
 | `SESSION_CALL_BUDGET` | `60` | Most provider calls one session may spend. `0` is unlimited. Reserves what finishing costs before granting any optional call — see [The call budget](#the-call-budget). |
 | `ALLOWED_ORIGINS` | `localhost:3000,5173,8080` | Comma-separated CORS allowlist. **Add the frontend's deployed URL here.** |
