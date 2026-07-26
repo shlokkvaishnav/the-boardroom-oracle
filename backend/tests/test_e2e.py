@@ -102,6 +102,9 @@ async def test_the_reveal_serializes_to_json_the_frontend_can_consume() -> None:
     assert set(frame["payload"]) == {
         "positions",
         "final_state",
+        "agreed",
+        "unresolved",
+        "synthesised",
     }
     state = frame["payload"]["final_state"]
     assert set(state) == {

@@ -30,6 +30,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from app.agents.base import Agent, PendingOffer, TurnContext
 from app.agents.opponent_model import BeliefSet
 from app.agents.personas import PERSONAS, Persona, all_agent_infos
+from app.agents.rapporteur import Rapporteur, RoomSynthesis
 from app.agents.scribe import Scribe
 from app.config import Settings
 from app.engine.budget import CallBudget
@@ -101,6 +102,7 @@ class NegotiationEngine:
         personas: tuple[Persona, ...] = PERSONAS,
         context_topic: str | None = None,
         scribe: Scribe | None = None,
+        rapporteur: Rapporteur | None = None,
     ) -> None:
         self.session_id = session_id
         self._agents = list(agents)
@@ -151,6 +153,8 @@ class NegotiationEngine:
         self._allow_search = True
         #: Links claims to each other once a round. None when there is no key.
         self._scribe = scribe
+        #: Reports where the discussion landed, once, at the very end.
+        self._rapporteur = rapporteur
         #: In-flight scribe passes. Held so they can be cancelled on stop and
         #: awaited before the closing, and so they are not garbage-collected
         #: mid-flight — asyncio only keeps a weak reference to a bare task.
@@ -797,11 +801,23 @@ class NegotiationEngine:
         # client may have missed.
         await self._settle_scribes()
 
+        # Outside the lock, and allowed to fail: the ending itself is not
+        # negotiable, so a synthesis that cannot run degrades to the old rule
+        # rather than holding up or breaking the closing.
+        synthesis = await self._summarise()
+
         async with self._lock:
             self.finished = True
-            self._closing_positions = self._final_positions()
+            self._closing_positions = (
+                {s.agent_id: s.position for s in synthesis.statements}
+                if synthesis and synthesis.statements
+                else self._final_positions()
+            )
             self.closing = ClosingPayload(
                 positions=self._closing_positions,
+                agreed=list(synthesis.agreed) if synthesis else [],
+                unresolved=list(synthesis.unresolved) if synthesis else [],
+                synthesised=synthesis is not None,
                 # Built after the positions are set, so the snapshot carries
                 # them rather than the mid-discussion `null`. Final holdings
                 # ride along inside it — this payload used to repeat them as a
@@ -812,13 +828,56 @@ class NegotiationEngine:
 
         await self._emit(ClosingMessage(payload=closing))
 
-    def _final_positions(self) -> dict[str, str]:
-        """Each party's last statement, as their closing argument.
+    async def _summarise(self) -> RoomSynthesis | None:
+        """Ask the rapporteur where the discussion landed. Never raises.
 
-        Taken from the transcript rather than generated fresh: a separate
-        closing call would cost one per agent against a shared rate limit, and
-        a freshly written summary could contradict what they actually spent the
-        discussion saying.
+        Budgeted like every other optional call, with `floor=0` because there
+        are no rounds left to reserve for — this runs after the last one. The
+        session is over either way; the only question is whether it ends with a
+        report or with everyone's last sentence.
+        """
+        if self._rapporteur is None or not self._settings.enable_synthesis:
+            return None
+        if not self.budget.can_afford(1):
+            logger.info("skipping closing synthesis: no calls left")
+            return None
+
+        self.budget.spend(1)
+        async with self._lock:
+            remarks = list(self.thoughts)
+            parties = list(self.parties)
+            claims = [self.knowledge.node(cid) for cid in self.knowledge.claim_ids]
+            topic = self.context_topic
+
+        try:
+            synthesis = await self._rapporteur.summarise(
+                topic=topic, parties=parties, remarks=remarks, claims=claims
+            )
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("closing synthesis raised; falling back to last remarks")
+            return None
+
+        if synthesis is not None:
+            logger.info(
+                "session %s closed with %d position(s), %d agreed, %d unresolved",
+                self.session_id,
+                len(synthesis.statements),
+                len(synthesis.agreed),
+                len(synthesis.unresolved),
+            )
+        return synthesis
+
+    def _final_positions(self) -> dict[str, str]:
+        """Each party's last statement. The fallback when there is no report.
+
+        This used to be the only ending, for two good reasons: a per-agent
+        closing round costs one call each, and a freshly written summary can
+        contradict the transcript. The rapporteur answers both — one call for
+        the table, and it reads the transcript rather than inventing from it —
+        so this is now what happens when the rapporteur cannot run at all.
+
+        It remains deliberately dumb. A last utterance is a poor closing
+        statement, but it is always available and never wrong about who said it.
         """
         positions: dict[str, str] = {}
         for remark in self.thoughts:

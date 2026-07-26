@@ -23,6 +23,9 @@ export function ClosingPanel({
   positions,
   offers,
   resource,
+  agreed,
+  unresolved,
+  synthesised,
   onReset,
 }: {
   agents: Agent[];
@@ -30,6 +33,10 @@ export function ClosingPanel({
   offers: Offer[];
   /** The pool's own name — this footnote used to hardcode "credits". */
   resource: string;
+  /** Where the room landed. Only shown when a report was actually produced. */
+  agreed: string[];
+  unresolved: string[];
+  synthesised: boolean;
   onReset: () => void;
 }) {
   // Only parties who actually spoke: the human seat has no closing argument
@@ -77,6 +84,25 @@ export function ClosingPanel({
           );
         })}
       </div>
+      {synthesised && (
+        <div className="grid w-full max-w-3xl gap-3 sm:grid-cols-2">
+          {/* Rendered even when empty: a room that converged on nothing is a
+              real outcome, and hiding it would read as "not summarised". */}
+          <Landed
+            title="AGREED"
+            items={agreed}
+            empty="nothing — the room did not converge"
+            color="var(--trust-pos)"
+          />
+          <Landed
+            title="STILL OPEN"
+            items={unresolved}
+            empty="nothing left in dispute"
+            color="var(--trust-neg)"
+          />
+        </div>
+      )}
+
       <button
         onClick={onReset}
         className="rounded-md border border-primary px-6 py-2.5 font-display text-sm font-bold tracking-wide text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
@@ -84,5 +110,37 @@ export function ClosingPanel({
         NEW DISCUSSION
       </button>
     </div>
+  );
+}
+
+/** One column of the rapporteur's report. */
+function Landed({
+  title,
+  items,
+  empty,
+  color,
+}: {
+  title: string;
+  items: string[];
+  empty: string;
+  color: string;
+}) {
+  return (
+    <section className="rounded-lg border border-border bg-card/70 p-3">
+      <h4 className="font-display text-[10px] font-bold tracking-[0.22em]" style={{ color }}>
+        {title}
+      </h4>
+      {items.length === 0 ? (
+        <p className="mt-2 font-mono text-[12px] italic text-muted-foreground">{empty}</p>
+      ) : (
+        <ul className="mt-2 space-y-1">
+          {items.map((item, i) => (
+            <li key={i} className="font-mono text-[12px] leading-snug text-foreground/85">
+              <span style={{ color }}>·</span> {item}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

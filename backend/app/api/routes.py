@@ -141,6 +141,7 @@ async def start_session(
         emit=request.app.state.manager.emitter_for(session_id),
         context_topic=context_topic,
         scribe=request.app.state.scribe,
+        rapporteur=request.app.state.rapporteur,
     )
     try:
         await store.put(engine)

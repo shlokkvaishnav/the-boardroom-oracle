@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     #: One extra call per round with claims in it, spent only from the budget's
     #: surplus. Turn it off to run a session at exactly the old call count.
     enable_scribe: bool = True
+    #: One call at the very end, reporting each party's settled position and
+    #: where the room landed. Uses the main model rather than the cheap one:
+    #: this is the last thing anyone reads, and it is one call per session.
+    #: Off means the closing falls back to each party's last remark.
+    enable_synthesis: bool = True
     #: How long the closing waits for a scribe pass still in flight. Bounded on
     #: purpose: a session's ending must never be hostage to a hung call, so an
     #: overrunning pass is cancelled and its links lost.

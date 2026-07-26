@@ -111,6 +111,9 @@ function emptyState(): NegotiationState {
     agentThoughts: [],
     holdings: {},
     closingPositions: null,
+    agreed: [],
+    unresolved: [],
+    synthesised: false,
   };
 }
 

@@ -69,6 +69,7 @@ def build_engine(
     *,
     recorder: Recorder | None = None,
     scribe: object | None = None,
+    rapporteur: object | None = None,
     **settings_overrides: object,
 ) -> tuple[NegotiationEngine, Recorder, dict[str, ScriptedAgent]]:
     scripts = scripts or {}
@@ -83,6 +84,7 @@ def build_engine(
         settings=make_settings(**settings_overrides),
         emit=recorder,
         scribe=scribe,  # type: ignore[arg-type]
+        rapporteur=rapporteur,  # type: ignore[arg-type]
     )
     return engine, recorder, agents
 

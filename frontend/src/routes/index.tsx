@@ -152,6 +152,9 @@ function Index() {
               positions={state.closingPositions}
               offers={state.offerLog}
               resource={state.pool.resource}
+              agreed={state.agreed}
+              unresolved={state.unresolved}
+              synthesised={state.synthesised}
               onReset={handleReset}
             />
           )}

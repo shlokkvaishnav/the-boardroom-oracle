@@ -102,6 +102,12 @@ export interface NegotiationState {
   holdings: Record<string, number>;
   /** Each party's closing statement on the topic. Null until the end. */
   closingPositions: Record<string, string> | null;
+  /** Where the room landed. Both empty when the rapporteur could not run —
+   *  `synthesised` is what tells that apart from a room that agreed on
+   *  nothing, which is a real outcome worth showing. */
+  agreed: string[];
+  unresolved: string[];
+  synthesised: boolean;
 }
 
 export type ConnectionStatus =

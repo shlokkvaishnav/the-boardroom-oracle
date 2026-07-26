@@ -89,10 +89,19 @@ class ClosingPayload(ContractModel):
     Final holdings are read from `final_state.holdings`. They were briefly a
     sibling field here too, which meant one number had two sources that could
     drift apart; the snapshot is the authoritative one.
+
+    `agreed` and `unresolved` come from the rapporteur. Both stay empty when it
+    could not run, which is why `synthesised` exists: an empty `agreed` from a
+    real report means the room converged on nothing, and that is a genuine
+    outcome the UI should show rather than hide.
     """
 
     positions: dict[str, str]
     final_state: NegotiationState
+    agreed: list[str] = Field(default_factory=list)
+    unresolved: list[str] = Field(default_factory=list)
+    #: False when the closing fell back to each party's last remark.
+    synthesised: bool = False
 
 
 # --------------------------------------------------------------------------- #

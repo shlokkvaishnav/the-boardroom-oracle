@@ -181,6 +181,10 @@ export const toState = (s: WireState): NegotiationState => ({
   agentThoughts: s.agent_thoughts.map(toThought),
   holdings: s.holdings ?? {},
   closingPositions: s.closing_positions,
+  // Only the closing frame carries these; a mid-game snapshot has none.
+  agreed: [],
+  unresolved: [],
+  synthesised: false,
 });
 
 export const toVoiceResult = (r: WireVoiceResult): VoiceOfferResult => ({

@@ -225,6 +225,9 @@ async def test_the_live_stream_carries_the_whole_game_through_to_reveal() -> Non
     assert set(frames(socket)[-1]["payload"]) == {
         "positions",
         "final_state",
+        "agreed",
+        "unresolved",
+        "synthesised",
     }
 
 

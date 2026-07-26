@@ -114,6 +114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.offer_parser = None
     app.state.search_tool = None
     app.state.scribe = None
+    app.state.rapporteur = None
 
     # The web_search tool is only built when there's a key for it. Without one,
     # a session with a `context_topic` still runs — the agents simply reason
@@ -138,6 +139,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             from app.agents.scribe import Scribe
 
             app.state.scribe = Scribe(app.state.llm_client, settings)
+
+        if settings.enable_synthesis:
+            from app.agents.rapporteur import Rapporteur
+
+            app.state.rapporteur = Rapporteur(app.state.llm_client, settings)
 
     # `allow_credentials` must be False alongside a wildcard origin — the CORS
     # spec forbids the combination and Starlette silently drops the header.

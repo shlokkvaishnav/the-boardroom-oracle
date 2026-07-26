@@ -63,6 +63,9 @@ const emptyState = (): NegotiationState => ({
   trustGraph: { nodes: [], edges: [] },
   knowledgeGraph: { nodes: [], edges: [] },
   offerLog: [],
+  agreed: [],
+  unresolved: [],
+  synthesised: false,
   agentThoughts: [],
   holdings: {},
   closingPositions: null,
@@ -182,10 +185,16 @@ export class LiveNegotiationClient implements NegotiationClient {
         const body = payload as unknown as {
           final_state: WireState;
           positions: Record<string, string>;
+          agreed?: string[];
+          unresolved?: string[];
+          synthesised?: boolean;
         };
         this.state = {
           ...toState(body.final_state),
           closingPositions: body.positions,
+          agreed: body.agreed ?? [],
+          unresolved: body.unresolved ?? [],
+          synthesised: body.synthesised ?? false,
         };
         break;
       }
