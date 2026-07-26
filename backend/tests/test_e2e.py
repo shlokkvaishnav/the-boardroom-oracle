@@ -110,6 +110,7 @@ async def test_the_reveal_serializes_to_json_the_frontend_can_consume() -> None:
         "pool",
         "agents",
         "trust_graph",
+        "knowledge_graph",
         "offer_log",
         "agent_thoughts",
         "holdings",

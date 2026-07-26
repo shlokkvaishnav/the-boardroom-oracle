@@ -32,11 +32,14 @@ from app.agents.opponent_model import BeliefSet
 from app.agents.personas import PERSONAS, Persona, all_agent_infos
 from app.config import Settings
 from app.engine.budget import CallBudget
+from app.engine.knowledge_graph import KnowledgeDelta, KnowledgeGraph
 from app.engine.trust_graph import TrustGraph, favorability
 from app.models.agent_io import AgentDecision
 from app.models.messages import (
     GraphUpdateMessage,
     GraphUpdatePayload,
+    KnowledgeUpdateMessage,
+    KnowledgeUpdatePayload,
     OfferMessage,
     ClosingMessage,
     ClosingPayload,
@@ -51,6 +54,7 @@ from app.models.schemas import (
     OfferRecord,
     OfferSchema,
     Pool,
+    SearchRecord,
 )
 
 logger = logging.getLogger("boardroom.engine")
@@ -114,6 +118,11 @@ class NegotiationEngine:
         self.holdings: dict[str, float] = {pid: round(even_share, 4) for pid in party_ids}
 
         self.graph = TrustGraph([(party.id, party.name) for party in self.parties])
+        #: What gets argued, as opposed to who trusts whom. Shares node ids with
+        #: the trust graph, so a party is the same node in both.
+        self.knowledge = KnowledgeGraph(
+            [(party.id, party.name) for party in self.parties]
+        )
         self.beliefs: dict[str, BeliefSet] = {
             agent.id: BeliefSet.for_agent(agent.id, party_ids) for agent in self._agents
         }
@@ -153,6 +162,7 @@ class NegotiationEngine:
             pool=self.pool,
             agents=list(self.parties),
             trust_graph=self.graph.view(),
+            knowledge_graph=self.knowledge.view(),
             offer_log=list(self.offer_log),
             agent_thoughts=list(self.thoughts),
             holdings=dict(self.holdings),
@@ -298,13 +308,26 @@ class NegotiationEngine:
 
         # `searched` is only present on a TurnDecision — mock agents return a
         # plain AgentDecision — so it's read defensively rather than required.
+        searched = list(getattr(decision, "searched", []) or [])
         thought = AgentThought(
             agent_id=agent_id,
             text=decision.thought,
-            searched=list(getattr(decision, "searched", []) or []),
+            searched=searched,
         )
         self.thoughts.append(thought)
         events.append(ThoughtMessage(payload=thought))
+
+        knowledge = self._record_claims(agent_id, decision, searched)
+        if not knowledge.empty:
+            events.append(
+                KnowledgeUpdateMessage(
+                    payload=KnowledgeUpdatePayload(
+                        nodes=knowledge.nodes,
+                        edges=knowledge.edges,
+                        reason="claim_made",
+                    )
+                )
+            )
 
         if decision.action == "offer" and decision.offer is not None:
             events.extend(
@@ -333,6 +356,53 @@ class NegotiationEngine:
                     belief_set.about(update.agent_id).apply_reported_delta(update.trust_delta)
 
         return events
+
+    def _record_claims(
+        self, agent_id: str, decision: AgentDecision, searched: list[SearchRecord]
+    ) -> KnowledgeDelta:
+        """Fold this turn's self-reported claims into the knowledge graph.
+
+        Caller must hold the lock. Costs nothing: the claims arrived inside the
+        response the agent was already sending, which is the whole reason they
+        are self-reported rather than extracted by a second call.
+
+        Anything the agent looked up this turn is attached as evidence to the
+        claims it made in the same breath. That attribution is approximate — the
+        agent is not asked which specific hit backs which specific claim, and a
+        turn rarely makes more than one substantive point — but the *existence*
+        of the search is exact, because the engine stamped it from a tool call
+        that really ran. Approximate linkage of real evidence is worth much more
+        than precise linkage of evidence a model claimed to have.
+        """
+        delta = KnowledgeDelta()
+        claims = list(getattr(decision, "claims", []) or [])
+        if not claims:
+            return delta
+
+        for claim in claims:
+            text = claim.text.strip()
+            if not text:
+                continue
+            claim_id, added = self.knowledge.add_claim(
+                author_id=agent_id,
+                text=text,
+                claim_kind=claim.kind,
+                round=self.round,
+                entities=claim.entities,
+            )
+            delta.nodes.extend(added.nodes)
+            delta.edges.extend(added.edges)
+
+            for record in searched:
+                cited = self.knowledge.add_evidence(
+                    claim_id=claim_id,
+                    snippet=record.result_snippet,
+                    source_url=record.source_url,
+                )
+                delta.nodes.extend(cited.nodes)
+                delta.edges.extend(cited.edges)
+
+        return delta
 
     # ------------------------------------------------------------------ #
     # Offers

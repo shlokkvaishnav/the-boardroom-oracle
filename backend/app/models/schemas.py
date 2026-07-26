@@ -26,6 +26,12 @@ __all__ = [
     "GraphNode",
     "GraphEdge",
     "TrustGraphView",
+    "KnowledgeNodeKind",
+    "KnowledgeEdgeKind",
+    "Verdict",
+    "KnowledgeNode",
+    "KnowledgeEdge",
+    "KnowledgeGraphView",
     "OfferRecord",
     "OfferSchema",
     "SearchRecord",
@@ -161,6 +167,70 @@ class AgentThought(ContractModel):
     searched: list[SearchRecord] = Field(default_factory=list)
 
 
+# --------------------------------------------------------------------------- #
+# Knowledge graph — what was argued, as opposed to who trusts whom
+# --------------------------------------------------------------------------- #
+
+#: What a node in the knowledge graph represents.
+#:
+#: `party` deliberately reuses the party ids from `AgentInfo`, so the two graphs
+#: share node identity: the Ada in the trust graph and the Ada who asserted a
+#: claim are the same node, and a client can cross-reference them without a
+#: lookup table.
+KnowledgeNodeKind = Literal["party", "claim", "entity", "evidence"]
+
+#: How two nodes relate.
+#:
+#: `asserts` and `about` are reported by the speaker itself. `supports` and
+#: `contradicts` are cross-transcript judgements, so they can only be produced
+#: by something that reads the whole round — see the scribe.
+KnowledgeEdgeKind = Literal["asserts", "about", "cites", "supports", "contradicts"]
+
+#: A fact-check outcome. `unchecked` is the honest default: most claims are
+#: never checked, and rendering them as "unverified" would imply an attempt that
+#: never happened.
+Verdict = Literal["unchecked", "supported", "unsupported", "contradicted"]
+
+
+class KnowledgeNode(ContractModel):
+    """One node: a party, something they claimed, a thing, or a source.
+
+    Flat rather than a discriminated union over four shapes, because this is a
+    wire contract read by TypeScript and by a graph renderer that wants uniform
+    nodes. The optional fields are populated per `kind`; which ones apply is
+    documented on each.
+    """
+
+    id: str
+    kind: KnowledgeNodeKind
+    label: str
+
+    #: claim only — which round it was made in, and who made it.
+    round: int | None = None
+    author_id: str | None = None
+    #: claim only — fact / value / prediction, mirroring `agent_io.ClaimKind`.
+    claim_kind: str | None = None
+    #: claim only — stays `unchecked` unless something actually checked it.
+    verdict: Verdict | None = None
+    #: evidence only — where the snippet came from.
+    source_url: str | None = None
+
+
+class KnowledgeEdge(ContractModel):
+    """A directed, typed relation between two knowledge nodes."""
+
+    source: str
+    target: str
+    kind: KnowledgeEdgeKind
+
+
+class KnowledgeGraphView(ContractModel):
+    """The argument so far, as a graph."""
+
+    nodes: list[KnowledgeNode] = Field(default_factory=list)
+    edges: list[KnowledgeEdge] = Field(default_factory=list)
+
+
 class NegotiationState(ContractModel):
     """The complete public state of a session.
 
@@ -178,6 +248,9 @@ class NegotiationState(ContractModel):
     pool: Pool
     agents: list[AgentInfo] = Field(default_factory=list)
     trust_graph: TrustGraphView = Field(default_factory=TrustGraphView)
+    #: What has been argued, as opposed to who trusts whom. Empty until parties
+    #: start making claims, which only happens with a `context_topic` set.
+    knowledge_graph: KnowledgeGraphView = Field(default_factory=KnowledgeGraphView)
     offer_log: list[OfferRecord] = Field(default_factory=list)
     agent_thoughts: list[AgentThought] = Field(default_factory=list)
     #: Current split of the pool. The number the whole discussion is about,

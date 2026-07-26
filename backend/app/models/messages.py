@@ -19,6 +19,8 @@ from app.models.schemas import (
     AgentThought,
     ContractModel,
     GraphEdge,
+    KnowledgeEdge,
+    KnowledgeNode,
     NegotiationState,
     OfferRecord,
 )
@@ -28,9 +30,11 @@ __all__ = [
     "OfferMessage",
     "GraphUpdateMessage",
     "ThoughtMessage",
+    "KnowledgeUpdateMessage",
     "RoundChangeMessage",
     "ClosingMessage",
     "GraphUpdatePayload",
+    "KnowledgeUpdatePayload",
     "RoundChangePayload",
     "ClosingPayload",
     "WSMessage",
@@ -51,6 +55,21 @@ class GraphUpdatePayload(ContractModel):
     """
 
     edges: list[GraphEdge] = Field(default_factory=list)
+    reason: str
+
+
+class KnowledgeUpdatePayload(ContractModel):
+    """What one event added to the knowledge graph.
+
+    Purely additive, so a client merges by upserting on node id and edge
+    (source, target) — nothing is ever removed. A re-sent node carrying a
+    changed `verdict` is the one in-place update, and upsert handles it.
+    `reason` names what produced this, so the UI can distinguish a claim the
+    speaker made from a link a scribe inferred.
+    """
+
+    nodes: list[KnowledgeNode] = Field(default_factory=list)
+    edges: list[KnowledgeEdge] = Field(default_factory=list)
     reason: str
 
 
@@ -101,6 +120,11 @@ class ThoughtMessage(ContractModel):
     payload: AgentThought
 
 
+class KnowledgeUpdateMessage(ContractModel):
+    type: Literal["knowledge_update"] = "knowledge_update"
+    payload: KnowledgeUpdatePayload
+
+
 class RoundChangeMessage(ContractModel):
     type: Literal["round_change"] = "round_change"
     payload: RoundChangePayload
@@ -117,6 +141,7 @@ WSMessage = Annotated[
         OfferMessage,
         GraphUpdateMessage,
         ThoughtMessage,
+        KnowledgeUpdateMessage,
         RoundChangeMessage,
         ClosingMessage,
     ],

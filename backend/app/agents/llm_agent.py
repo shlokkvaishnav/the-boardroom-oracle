@@ -121,6 +121,17 @@ class LLMAgent:
                 "    this turn. Use negative `trust_delta` when someone works against "
                 "    you, positive when they cooperate. Omit parties you learned nothing "
                 "    new about.",
+                "  - `claims` is the point underneath what you just said, written out "
+                "    plainly so it can be recorded and checked. At most two, and often "
+                "    none: leave it empty if you only agreed, asked a question, or made "
+                "    a move without arguing for it. Two rules. Claim only things about "
+                "    the matter under discussion — never about the negotiation itself, "
+                "    so 'the deadline is the real constraint' yes, 'Rex is stonewalling' "
+                "    no. And mark each one honestly: `fact` if someone could look it up, "
+                "    `prediction` if it is about what happens next, `value` if it is a "
+                "    judgement about what matters. Do not dress a value up as a fact — "
+                "    what you claim as fact may be checked against a source, and being "
+                "    caught inventing one costs you the argument.",
             ]
         )
 

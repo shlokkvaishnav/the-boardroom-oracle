@@ -135,6 +135,8 @@ def test_negotiation_state_serializes_to_exact_expected_json() -> None:
                 }
             ],
         },
+        # Empty until parties start making claims, which needs a context topic.
+        "knowledge_graph": {"nodes": [], "edges": []},
         "offer_log": [
             {
                 "round": 1,
@@ -171,6 +173,7 @@ def test_state_has_exactly_the_contracted_top_level_keys() -> None:
         "pool",
         "agents",
         "trust_graph",
+        "knowledge_graph",
         "offer_log",
         "agent_thoughts",
         "holdings",

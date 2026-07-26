@@ -18,9 +18,64 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.schemas import SearchRecord
 
-__all__ = ["Action", "ProposedOffer", "OpponentDelta", "AgentDecision", "TurnDecision"]
+__all__ = [
+    "Action",
+    "ClaimKind",
+    "Claim",
+    "ProposedOffer",
+    "OpponentDelta",
+    "AgentDecision",
+    "TurnDecision",
+]
 
 Action = Literal["offer", "accept", "reject", "pass"]
+
+#: What kind of thing a claim is, which decides what can be done with it.
+#:
+#: The distinction earns its place by telling the fact-checker what is even
+#: checkable: "copper output fell 12% last year" can be verified against a
+#: source, "we should protect the smaller supplier first" cannot, and spending a
+#: search on the second is a wasted call and a category error. Asking the
+#: speaker to label its own claim is far cheaper and more accurate than
+#: inferring it downstream.
+ClaimKind = Literal["fact", "value", "prediction"]
+
+
+class Claim(BaseModel):
+    """One assertion an agent is making, stated structurally.
+
+    This is the cheap half of the knowledge graph. The agent is already
+    composing a `thought`; naming what it is claiming *while* it says it costs
+    no extra provider call and gets authorship exactly right, because the
+    speaker reported it rather than an observer guessing.
+
+    What it deliberately does not carry is how this claim relates to anyone
+    else's. An agent cannot reliably see that its point contradicts something
+    said two turns ago by someone else — that is a cross-transcript judgement,
+    and it belongs to the scribe pass that reads the whole round at once.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(
+        description=(
+            "The claim itself, as one plain sentence that stands on its own. Not a "
+            "quote of what you said — the point underneath it."
+        ),
+    )
+    kind: ClaimKind = Field(
+        description=(
+            "'fact' if it could be checked against a source, 'prediction' if it is "
+            "about what will happen, 'value' if it is a judgement about what matters."
+        ),
+    )
+    entities: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The few concrete things this claim is about — a place, an organisation, "
+            "a number, a date. Plain names, no articles. May be empty."
+        ),
+    )
 
 
 class ProposedOffer(BaseModel):
@@ -76,6 +131,15 @@ class AgentDecision(BaseModel):
     opponent_updates: list[OpponentDelta] = Field(
         default_factory=list,
         description="Belief updates about other parties. May be empty.",
+    )
+    claims: list[Claim] = Field(
+        default_factory=list,
+        description=(
+            "The substantive assertions inside what you just said, at most two. "
+            "Only points about the matter under discussion — never claims about the "
+            "negotiation itself ('Rex is being difficult'). Empty if you only "
+            "agreed, asked something, or made a move without arguing for it."
+        ),
     )
 
     @model_validator(mode="after")
