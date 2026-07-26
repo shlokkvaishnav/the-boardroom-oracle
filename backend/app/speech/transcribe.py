@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -92,12 +94,26 @@ class WhisperTranscriber:
         # A real file on disk is the most robust input: PyAV sniffs the
         # container, and browser recordings arrive as webm/ogg/mp4 as often as
         # wav. The suffix is preserved to help that sniffing along.
+        #
+        # The file is written, CLOSED, and only then handed to the model.
+        # Windows opens NamedTemporaryFile exclusively, so PyAV reopening it by
+        # name while our handle is still open fails with "Permission denied" —
+        # on Linux the same code works, which is how this survived being
+        # developed in Docker. `delete=False` plus an explicit unlink is the
+        # portable shape.
         suffix = Path(filename).suffix or ".webm"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as handle:
+        handle = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        try:
             handle.write(audio)
-            handle.flush()
+            handle.close()
             segments, info = self._model.transcribe(handle.name, beam_size=5)
+            # `segments` is a generator that reads the file lazily, so it must
+            # be drained before the file goes away.
             collected = list(segments)
+        finally:
+            handle.close()
+            with suppress(OSError):
+                os.unlink(handle.name)
 
         text = " ".join(segment.text.strip() for segment in collected).strip()
         logprobs = [
