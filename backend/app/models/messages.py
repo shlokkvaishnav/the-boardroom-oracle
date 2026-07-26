@@ -45,8 +45,9 @@ __all__ = [
 class GraphUpdatePayload(ContractModel):
     """The edges whose weight changed as a result of one action.
 
-    A list rather than a single edge because accepting an offer can move trust
-    in both directions at once.
+    A single action moves exactly one edge, but this is a list so that session
+    start and reset can push the whole graph through the same frame type.
+    `reason` names the rule that fired, so the UI can label the change.
     """
 
     edges: list[GraphEdge] = Field(default_factory=list)
