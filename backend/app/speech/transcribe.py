@@ -106,7 +106,23 @@ class WhisperTranscriber:
         try:
             handle.write(audio)
             handle.close()
-            segments, info = self._model.transcribe(handle.name, beam_size=5)
+            # Tuned for short spoken commands on CPU, where latency is the
+            # whole experience:
+            #   beam_size=1  — greedy. Beam search costs several times the time
+            #                  for accuracy that a one-line instruction doesn't
+            #                  need.
+            #   vad_filter   — strips leading/trailing silence. Browser
+            #                  recordings start before you do, and a clip that is
+            #                  mostly silence is what came back empty.
+            #   condition_on_previous_text=False — no prior context to carry, and
+            #                  it stops the model inventing continuations.
+            segments, info = self._model.transcribe(
+                handle.name,
+                beam_size=1,
+                vad_filter=True,
+                condition_on_previous_text=False,
+                language=self._settings.whisper_language or None,
+            )
             # `segments` is a generator that reads the file lazily, so it must
             # be drained before the file goes away.
             collected = list(segments)
@@ -123,6 +139,13 @@ class WhisperTranscriber:
         ]
         avg_logprob = sum(logprobs) / len(logprobs) if logprobs else CLEAR_AUDIO_LOGPROB
 
+        logger.info(
+            "transcribed %d bytes -> %d segment(s), %d chars (avg_logprob %.2f)",
+            len(audio),
+            len(collected),
+            len(text),
+            avg_logprob,
+        )
         return Transcription(
             text=text,
             avg_logprob=avg_logprob,

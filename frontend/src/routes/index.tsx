@@ -6,6 +6,7 @@ import { ThoughtsFeed } from "@/components/boardroom/ThoughtsFeed";
 import { OfferTimeline } from "@/components/boardroom/OfferTimeline";
 import { VoiceModal } from "@/components/boardroom/VoiceModal";
 import { TopicPrompt } from "@/components/boardroom/TopicPrompt";
+import { YourTurnBanner } from "@/components/boardroom/YourTurnBanner";
 import { ClosingPanel } from "@/components/boardroom/ClosingPanel";
 import { useNegotiation } from "@/hooks/useNegotiation";
 
@@ -88,6 +89,12 @@ function Index() {
           )}
         </div>
       )}
+
+      <YourTurnBanner
+        offers={state.offerLog}
+        agents={state.agents}
+        onSpeak={() => setMicOpen(true)}
+      />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[1fr_minmax(280px,30%)]">
         <section className="panel relative min-h-0 overflow-hidden rounded-lg bg-stage">

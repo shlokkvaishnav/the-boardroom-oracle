@@ -104,8 +104,14 @@ class LLMAgent:
                 "    is already visible. Say the *substance*: what you believe about "
                 "    the matter on the table, and why the others should move your way. "
                 "    Name whoever spoke last and answer them — agree, rebut, or press "
-                "    them on something they dodged. Speak like a person in a room, not "
-                "    a bot reporting its state. One or two sentences.",
+                "    them on something they dodged.",
+                "  - HOW TO TALK. Like a person in a room, not an op-ed. Short "
+                "    sentences. Everyday words — say 'costs too much', not "
+                "    'imposes prohibitive fiscal burdens'. Use contractions. One "
+                "    sentence is usually plenty, two is the limit. If a plainer "
+                "    word exists, use it. No throat-clearing, no 'furthermore', no "
+                "    stacking three clauses into one breath. Read it back: if it "
+                "    sounds like a press release, rewrite it.",
                 "  - Two things that ruin it, so avoid both. Do not append your reason "
                 "    for the move ('...so I am mirroring her cooperation') — that is "
                 "    narration, and nobody speaks that way. Do not repeat someone's "

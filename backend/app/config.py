@@ -77,9 +77,17 @@ class Settings(BaseSettings):
     pool_total: float = 100.0
 
     # --- Speech-to-text ---
-    whisper_model: str = "base"
+    #: "tiny" over "base": on CPU it transcribes a one-line command in a
+    #: fraction of the time, and for short spoken offers the accuracy
+    #: difference is not worth the wait.
+    whisper_model: str = "tiny"
     whisper_compute_type: str = "int8"
-    whisper_preload: bool = False
+    #: Load at boot by default. The first transcription otherwise pays the
+    #: whole model load, which reads as "the mic is broken".
+    whisper_preload: bool = True
+    #: Pin the language to skip auto-detection, which costs a pass over the
+    #: audio. Empty means detect.
+    whisper_language: str = "en"
 
     # --- Live web search (agent tool) ---
     #: Without a key the `web_search` tool is never offered to agents and a
