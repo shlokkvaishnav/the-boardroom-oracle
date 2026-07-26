@@ -122,6 +122,8 @@ class NegotiationEngine:
 
         self._revealed: dict[str, str] | None = None
         self._offer_seq = 0
+        #: Provider calls spent in the current round; logged when it ends.
+        self._round_llm_calls = 0
         self._stopped = False
         self._lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
@@ -181,12 +183,23 @@ class NegotiationEngine:
                     )
                 )
 
+                self._round_llm_calls = 0
                 for agent in self._agents:
                     if self._stopped:
                         return
                     await self._take_turn(agent)
                     if self._settings.turn_delay_seconds > 0:
                         await asyncio.sleep(self._settings.turn_delay_seconds)
+
+                # Worth logging because a search-heavy round costs twice the
+                # calls of a plain one, and the free tier is a per-minute
+                # budget — this is the number to watch in demo rehearsal.
+                logger.info(
+                    "round %d of session %s used %d provider call(s)",
+                    round_number,
+                    self.session_id,
+                    self._round_llm_calls,
+                )
 
             await self._finish()
         except asyncio.CancelledError:
@@ -207,6 +220,7 @@ class NegotiationEngine:
         decision = await agent.decide(context)
 
         async with self._lock:
+            self._round_llm_calls += getattr(decision, "llm_calls", 1)
             events = self._apply(agent.id, decision)
 
         for event in events:
@@ -233,7 +247,13 @@ class NegotiationEngine:
         """Fold one decision into the state. Caller must hold the lock."""
         events: list[WSMessage] = []
 
-        thought = AgentThought(agent_id=agent_id, text=decision.thought)
+        # `searched` is only present on a TurnDecision — mock agents return a
+        # plain AgentDecision — so it's read defensively rather than required.
+        thought = AgentThought(
+            agent_id=agent_id,
+            text=decision.thought,
+            searched=list(getattr(decision, "searched", []) or []),
+        )
         self.thoughts.append(thought)
         events.append(ThoughtMessage(payload=thought))
 

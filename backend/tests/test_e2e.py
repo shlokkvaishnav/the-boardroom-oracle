@@ -263,3 +263,125 @@ def test_a_session_played_through_the_api_reaches_a_valid_reveal() -> None:
     assert client.post("/api/session/reset").json()["status"] == "reset"
     assert client.get("/api/session/state").status_code == 404
     assert client.post("/api/session/start").status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# A search-enabled round, end to end
+#
+# Mocked Gemini and mocked Tavily, driving the real LLMAgent through the real
+# engine, to confirm `searched` reaches the WebSocket frame the frontend reads.
+# --------------------------------------------------------------------------- #
+
+
+class ScriptedSDK:
+    """Gemini stand-in: one tool call, then a structured decision, per turn."""
+
+    def __init__(self, decision: dict[str, Any], *, search_query: str | None) -> None:
+        self._decision = decision
+        self._search_query = search_query
+        self.aio = self
+        self.models = self
+        self.tool_phase = True
+
+    async def generate_content(self, *, model: str, contents: Any, config: Any) -> Any:
+        # Tools present => this is phase one; otherwise the structured call.
+        if getattr(config, "tools", None):
+            calls = []
+            if self._search_query:
+                calls = [_FnCall("web_search", {"query": self._search_query})]
+            return _Resp("", calls)
+        return _Resp(json.dumps(self._decision), [])
+
+
+class _FnCall:
+    def __init__(self, name: str, args: dict[str, Any]) -> None:
+        self.name = name
+        self.args = args
+
+
+class _Resp:
+    def __init__(self, text: str, function_calls: list[_FnCall]) -> None:
+        self.text = text
+        self.function_calls = function_calls
+
+
+class ScriptedTavily:
+    def __init__(self, snippet: str, url: str) -> None:
+        self._snippet = snippet
+        self._url = url
+        self.queries: list[str] = []
+
+    async def search(self, query: str, **kwargs: Any) -> dict[str, Any]:
+        self.queries.append(query)
+        return {"results": [{"title": "T", "content": self._snippet, "url": self._url}]}
+
+
+async def _play_one_round(*, search_query: str | None) -> tuple[Recorder, ScriptedTavily]:
+    from app.agents.llm_agent import build_llm_agents
+    from app.llm_client import LLMClient
+    from app.search import WebSearchTool
+
+    settings = make_settings(
+        gemini_api_key="fake",
+        use_mock_agents=False,
+        tavily_api_key="fake",
+        rounds=1,
+        llm_min_interval_seconds=0.0,
+    )
+    decision = {
+        "action": "pass",
+        "offer": None,
+        "target_offer_id": None,
+        "thought": "Holding while I read the room.",
+        "opponent_updates": [],
+    }
+    llm = LLMClient(settings, client=ScriptedSDK(decision, search_query=search_query))
+    tavily = ScriptedTavily("Copper hit $4.20/lb.", "https://a.example")
+    search = WebSearchTool(settings, client=tavily)
+
+    recorder = Recorder()
+    engine = NegotiationEngine(
+        session_id="ctx1",
+        agents=build_llm_agents(llm, settings, search=search),
+        settings=settings,
+        emit=recorder,
+        context_topic="the 2026 copper supply squeeze",
+    )
+    await engine.run()
+    return recorder, tavily
+
+
+async def test_a_searched_thought_reaches_the_websocket_frame() -> None:
+    recorder, tavily = await _play_one_round(search_query="copper price 2026")
+
+    thoughts = [e for e in recorder.events if e.type == "thought"]
+    searched = [t for t in thoughts if t.payload.searched]
+
+    assert tavily.queries == ["copper price 2026"] * len(PERSONAS)
+    assert searched, "no thought carried a searched record"
+    record = searched[0].payload.searched[0]
+    assert record.query == "copper price 2026"
+    assert record.result_snippet == "Copper hit $4.20/lb."
+    assert record.source_url == "https://a.example"
+
+
+async def test_the_searched_field_survives_wire_serialization() -> None:
+    """The frontend reads this off the JSON, not the Python object."""
+    recorder, _ = await _play_one_round(search_query="copper price 2026")
+
+    thought = next(
+        e for e in recorder.events if e.type == "thought" and e.payload.searched
+    )
+    wire = thought.wire()
+
+    assert wire["payload"]["searched"][0]["source_url"] == "https://a.example"
+    assert wire["payload"]["searched"][0]["result_snippet"] == "Copper hit $4.20/lb."
+
+
+async def test_a_round_where_nobody_searches_carries_no_records() -> None:
+    recorder, tavily = await _play_one_round(search_query=None)
+
+    thoughts = [e for e in recorder.events if e.type == "thought"]
+
+    assert tavily.queries == []
+    assert thoughts and all(t.payload.searched == [] for t in thoughts)
