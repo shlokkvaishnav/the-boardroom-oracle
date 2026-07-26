@@ -1,6 +1,15 @@
 import { useEffect, useRef } from "react";
 import type { Agent, AgentThought } from "@/lib/negotiation/types";
 
+/**
+ * The transcript of the discussion.
+ *
+ * The wire field is still called `thought` for contract compatibility, but
+ * it is no longer private reasoning � agents are prompted to speak to each
+ * other, and this is what they said aloud. Hence "table talk" rather than
+ * "thoughts", which described the old behaviour and would now be a lie.
+ */
+
 export function ThoughtsFeed({ thoughts, agents }: { thoughts: AgentThought[]; agents: Agent[] }) {
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -17,7 +26,7 @@ export function ThoughtsFeed({ thoughts, agents }: { thoughts: AgentThought[]; a
     <section className="panel flex min-h-0 flex-col rounded-lg">
       <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <h2 className="font-display text-xs font-bold tracking-[0.22em] text-muted-foreground">
-          AGENT THOUGHTS
+          TABLE TALK
         </h2>
         <span className="size-2 animate-pulse rounded-full bg-trust-pos" />
       </header>
@@ -31,7 +40,7 @@ export function ThoughtsFeed({ thoughts, agents }: { thoughts: AgentThought[]; a
       >
         {visible.length === 0 && (
           <p className="text-muted-foreground">
-            <span className="text-primary">&gt;</span> awaiting session…
+            <span className="text-primary">&gt;</span> nobody has spoken yet…
           </p>
         )}
         {visible.map((t, i) => {
@@ -48,7 +57,7 @@ export function ThoughtsFeed({ thoughts, agents }: { thoughts: AgentThought[]; a
               >
                 {agent?.name ?? t.agentId}
               </span>
-              <span className="text-border"> :: </span>
+              <span className="text-border">: </span>
               <span className="text-foreground/85">{t.text}</span>
             </p>
           );

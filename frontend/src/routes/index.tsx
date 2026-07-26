@@ -11,7 +11,7 @@ import { useNegotiation } from "@/hooks/useNegotiation";
 
 const TITLE = "Boardroom Oracle — Live Multi-Agent AI Negotiation Arena";
 const DESCRIPTION =
-  "Watch three AI agents negotiate a shared resource pool in real time on a living trust graph — and join the table with your voice.";
+  "Give three AI agents a real-world topic and watch them argue it out — taking positions, rebutting each other, and trading a shared budget on a living trust graph. Join the table with your voice.";
 
 export const Route = createFileRoute("/")({
   head: () => ({
