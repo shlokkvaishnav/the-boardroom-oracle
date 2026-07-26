@@ -121,13 +121,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # `allow_credentials` must be False alongside a wildcard origin — the CORS
     # spec forbids the combination and Starlette silently drops the header.
+    allowed = ["*"] if settings.cors_allow_all else settings.cors_origins
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"] if settings.cors_allow_all else settings.cors_origins,
+        allow_origins=allowed,
         allow_credentials=not settings.cors_allow_all,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def explain_cors_rejections(request, call_next):
+        """Name the origin when a preflight is refused.
+
+        Starlette answers a disallowed preflight with a bare 400 and no
+        explanation, and the browser reports it only as a generic CORS failure —
+        so the actual symptom is "the button does nothing". Logging the origin
+        and the allowlist turns that into a one-line diagnosis.
+        """
+        response = await call_next(request)
+        if (
+            request.method == "OPTIONS"
+            and response.status_code == 400
+            and (origin := request.headers.get("origin"))
+            and not settings.cors_allow_all
+            and origin not in allowed
+        ):
+            logger.warning(
+                "CORS preflight refused for origin %r — allowed: %s. "
+                "Add it to ALLOWED_ORIGINS in backend/.env, or set CORS_ALLOW_ALL=true "
+                "for local development.",
+                origin,
+                allowed,
+            )
+        return response
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:

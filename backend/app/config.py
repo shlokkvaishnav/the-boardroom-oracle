@@ -10,9 +10,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #: prints both, so opening the one that wasn't listed produced a 400 on the CORS
 #: preflight with nothing in the UI to explain it. Both are listed for every
 #: dev port to remove that trap.
+#: 8081/8082 are Vite's fallback ports. It increments *silently* when 8080 is
+#: taken — a second `bun run dev` is enough — and the only symptom is a 400 on
+#: the CORS preflight with nothing in the UI to explain it.
 DEFAULT_ORIGINS = ",".join(
     f"http://{host}:{port}"
-    for port in (3000, 5173, 8080)
+    for port in (3000, 5173, 8080, 8081, 8082)
     for host in ("localhost", "127.0.0.1")
 )
 
