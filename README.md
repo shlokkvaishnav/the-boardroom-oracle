@@ -35,21 +35,39 @@ container waits for the API's healthcheck before starting.
 
 Docker is no longer required. `ctranslate2` now ships a wheel for Python 3.13+
 (4.8.1 has `cp314`), so the whole stack — including the Whisper voice pipeline —
-installs and runs natively:
+installs and runs natively on Python 3.12–3.14.
 
-```bash
-cd backend && python -m venv .venv && .venv/Scripts/python -m pip install -e .
+> **Windows PowerShell:** these are one command per block on purpose.
+> PowerShell 5.1 has no `&&` — chain with `;` if you want them on one line.
+
+Create the virtualenv:
+
+```powershell
+python -m venv backend\.venv
 ```
 
-Then run the API and the tests with that interpreter:
+Install the dependencies. Note this is **not** `pip install -e .`: the backend is
+an application, not a distributable package (`[tool.uv] package = false`, no
+`[build-system]`), so its dependencies are installed directly.
 
-```bash
-backend/.venv/Scripts/python -m uvicorn app.main:app --reload --port 8000
+```powershell
+backend\.venv\Scripts\python -m pip install fastapi "uvicorn[standard]" google-genai faster-whisper networkx pydantic pydantic-settings python-multipart tavily-python pytest pytest-asyncio httpx
 ```
 
-```bash
-backend/.venv/Scripts/python -m pytest -q
+Run the API:
+
+```powershell
+backend\.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000 --app-dir backend
 ```
+
+Run the tests (from the `backend` directory, so pytest finds `app`):
+
+```powershell
+cd backend; .venv\Scripts\python -m pytest -q
+```
+
+On macOS or Linux the interpreter is at `backend/.venv/bin/python` and `&&`
+works as usual.
 
 ## Running the backend on its own
 
