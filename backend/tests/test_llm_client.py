@@ -1,0 +1,256 @@
+"""The Gemini wrapper: pacing, backoff, and structured-output plumbing.
+
+These are the behaviours that keep a live demo off the free tier's 429 wall,
+so they're tested directly rather than inferred. No network: a fake stands in
+for the SDK client at the `aio.models.generate_content` seam.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from typing import Any
+
+import pytest
+from google.genai import errors as genai_errors
+from pydantic import BaseModel
+
+from app.config import Settings
+from app.llm_client import LLMClient, LLMError
+
+
+class Sample(BaseModel):
+    value: str
+
+
+def make_settings(**overrides: Any) -> Settings:
+    base: dict[str, Any] = {
+        "gemini_api_key": "fake",
+        "gemini_model": "gemini-3.6-flash",
+        "llm_min_interval_seconds": 0.0,
+        "llm_max_attempts": 3,
+        "llm_backoff_base_seconds": 0.01,
+        "llm_timeout_seconds": 5.0,
+        "_env_file": None,
+    }
+    base.update(overrides)
+    return Settings(**base)
+
+
+class FakeAPIError(genai_errors.APIError):
+    """An SDK error with a chosen status, without invoking the real ctor."""
+
+    def __init__(self, code: int, message: str = "boom") -> None:
+        self.code = code
+        self.message = message
+        Exception.__init__(self, message)
+
+
+class FakeResponse:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class FakeModels:
+    def __init__(self, outcomes: list[Any]) -> None:
+        self._outcomes = list(outcomes)
+        self.calls: list[dict[str, Any]] = []
+        self.started_at: list[float] = []
+        self.concurrent = 0
+        self.max_concurrent = 0
+
+    async def generate_content(self, *, model: str, contents: Any, config: Any) -> FakeResponse:
+        self.concurrent += 1
+        self.max_concurrent = max(self.max_concurrent, self.concurrent)
+        self.started_at.append(time.monotonic())
+        self.calls.append({"model": model, "contents": contents, "config": config})
+        try:
+            await asyncio.sleep(0)
+            if not self._outcomes:
+                raise AssertionError("fake ran out of outcomes")
+            item = self._outcomes.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            if isinstance(item, float):  # a slow call, for timeout tests
+                await asyncio.sleep(item)
+                return FakeResponse('{"value": "slow"}')
+            return FakeResponse(item)
+        finally:
+            self.concurrent -= 1
+
+
+class FakeSDK:
+    def __init__(self, *outcomes: Any) -> None:
+        self.models = FakeModels(list(outcomes))
+        self.aio = self
+
+    # `aio.models` resolves back to the same FakeModels via self-reference.
+
+
+def build(*outcomes: Any, **settings_overrides: Any) -> tuple[LLMClient, FakeModels]:
+    sdk = FakeSDK(*outcomes)
+    client = LLMClient(make_settings(**settings_overrides), client=sdk)
+    return client, sdk.models
+
+
+# --------------------------------------------------------------------------- #
+# Structured output
+# --------------------------------------------------------------------------- #
+
+
+async def test_a_valid_response_is_parsed_into_a_dict() -> None:
+    client, models = build('{"value": "ok"}')
+
+    result = await client.generate_structured("hello", Sample)
+
+    assert result == {"value": "ok"}
+    assert len(models.calls) == 1
+
+
+async def test_the_request_uses_gemini_json_mode_with_the_schema() -> None:
+    """Constrain the model rather than asking it nicely for JSON."""
+    client, models = build('{"value": "ok"}')
+
+    await client.generate_structured("hello", Sample, system="be terse")
+    config = models.calls[0]["config"]
+
+    assert config.response_mime_type == "application/json"
+    assert config.response_schema is Sample
+    assert config.system_instruction == "be terse"
+    assert models.calls[0]["model"] == "gemini-3.6-flash"
+
+
+async def test_the_system_instruction_is_omitted_when_not_given() -> None:
+    client, models = build('{"value": "ok"}')
+
+    await client.generate_structured("hello", Sample)
+
+    assert models.calls[0]["config"].system_instruction is None
+
+
+async def test_non_json_text_is_a_terminal_error_not_a_retry() -> None:
+    """JSON mode should prevent this; if it happens the caller must decide."""
+    client, models = build("this is not json")
+
+    with pytest.raises(LLMError, match="non-JSON"):
+        await client.generate_structured("hello", Sample)
+
+    assert len(models.calls) == 1
+
+
+async def test_an_empty_response_is_retried() -> None:
+    client, models = build("", '{"value": "recovered"}')
+
+    result = await client.generate_structured("hello", Sample)
+
+    assert result == {"value": "recovered"}
+    assert len(models.calls) == 2
+
+
+# --------------------------------------------------------------------------- #
+# Rate limiting
+# --------------------------------------------------------------------------- #
+
+
+async def test_a_429_is_retried_with_backoff_and_can_succeed() -> None:
+    client, models = build(FakeAPIError(429), '{"value": "after backoff"}')
+
+    result = await client.generate_structured("hello", Sample)
+
+    assert result == {"value": "after backoff"}
+    assert len(models.calls) == 2
+
+
+async def test_backoff_grows_between_attempts() -> None:
+    client, models = build(
+        FakeAPIError(429),
+        FakeAPIError(429),
+        '{"value": "third time"}',
+        llm_backoff_base_seconds=0.05,
+    )
+
+    await client.generate_structured("hello", Sample)
+
+    first_gap = models.started_at[1] - models.started_at[0]
+    second_gap = models.started_at[2] - models.started_at[1]
+    assert first_gap == pytest.approx(0.05, abs=0.04)
+    assert second_gap > first_gap  # 0.05 -> 0.10
+
+
+async def test_attempts_are_capped_and_then_raise() -> None:
+    client, models = build(
+        FakeAPIError(429), FakeAPIError(429), FakeAPIError(429), llm_max_attempts=3
+    )
+
+    with pytest.raises(LLMError, match="after 3 attempt"):
+        await client.generate_structured("hello", Sample)
+
+    assert len(models.calls) == 3
+
+
+@pytest.mark.parametrize("status", [500, 503])
+async def test_server_errors_are_retried_too(status: int) -> None:
+    client, models = build(FakeAPIError(status), '{"value": "ok"}')
+
+    assert await client.generate_structured("hello", Sample) == {"value": "ok"}
+    assert len(models.calls) == 2
+
+
+@pytest.mark.parametrize("status", [400, 403, 404])
+async def test_client_errors_are_not_retried(status: int) -> None:
+    """A bad request won't fix itself; retrying just burns quota."""
+    client, models = build(FakeAPIError(status), '{"value": "unused"}')
+
+    with pytest.raises(LLMError):
+        await client.generate_structured("hello", Sample)
+
+    assert len(models.calls) == 1
+
+
+async def test_a_timeout_is_retried() -> None:
+    client, models = build(5.0, '{"value": "ok"}', llm_timeout_seconds=0.05)
+
+    assert await client.generate_structured("hello", Sample) == {"value": "ok"}
+    assert len(models.calls) == 2
+
+
+# --------------------------------------------------------------------------- #
+# Pacing — the thing that keeps a round under the free tier's RPM budget
+# --------------------------------------------------------------------------- #
+
+
+async def test_calls_are_serialized_never_concurrent() -> None:
+    """Three personas acting at once is the fastest route to a 429."""
+    client, models = build(*['{"value": "ok"}'] * 3)
+
+    await asyncio.gather(
+        *(client.generate_structured(f"p{i}", Sample) for i in range(3))
+    )
+
+    assert len(models.calls) == 3
+    assert models.max_concurrent == 1
+
+
+async def test_consecutive_calls_are_spaced_by_the_minimum_interval() -> None:
+    client, models = build(*['{"value": "ok"}'] * 3, llm_min_interval_seconds=0.08)
+
+    for i in range(3):
+        await client.generate_structured(f"p{i}", Sample)
+
+    gaps = [
+        models.started_at[i + 1] - models.started_at[i]
+        for i in range(len(models.started_at) - 1)
+    ]
+    assert all(gap >= 0.07 for gap in gaps), gaps
+
+
+async def test_a_zero_interval_disables_throttling() -> None:
+    """Tests and paid keys shouldn't pay the free-tier tax."""
+    client, models = build(*['{"value": "ok"}'] * 3, llm_min_interval_seconds=0.0)
+
+    start = time.monotonic()
+    for i in range(3):
+        await client.generate_structured(f"p{i}", Sample)
+
+    assert time.monotonic() - start < 0.5
+    assert len(models.calls) == 3

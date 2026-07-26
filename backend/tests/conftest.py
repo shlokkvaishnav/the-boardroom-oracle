@@ -1,6 +1,6 @@
 """Shared test fixtures.
 
-Nothing here (or anywhere in the suite) may require an `ANTHROPIC_API_KEY`,
+Nothing here (or anywhere in the suite) may require a `GEMINI_API_KEY`,
 network access, or downloaded model weights: every LLM and Whisper call is
 mocked at the seam.
 """
@@ -18,7 +18,7 @@ from app.main import create_app
 def settings() -> Settings:
     """Deterministic settings, independent of the ambient environment."""
     return Settings(
-        anthropic_api_key=None,
+        gemini_api_key=None,
         # Belt and braces: even if a key leaks in from the environment, no test
         # may ever reach the real API.
         use_mock_agents=True,

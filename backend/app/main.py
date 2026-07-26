@@ -1,7 +1,7 @@
 """FastAPI application entrypoint and composition root.
 
 Everything shared — settings, the session store, the WebSocket connection
-manager, the transcriber, the Anthropic client — is constructed once here and
+manager, the transcriber, the LLM client — is constructed once here and
 hung on `app.state`. Nothing else in the codebase reaches for a global.
 """
 
@@ -30,15 +30,15 @@ VERSION = "0.1.0"
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     logger.info(
-        "starting boardroom-oracle backend (model=%s, effort=%s, rounds=%s, agents=%s)",
-        settings.anthropic_model,
-        settings.anthropic_effort,
+        "starting boardroom-oracle backend (model=%s, rounds=%s, turn_delay=%.1fs, agents=%s)",
+        settings.gemini_model,
         settings.rounds,
-        "mock" if (settings.use_mock_agents or not settings.has_anthropic_key) else "claude",
+        settings.turn_delay_seconds,
+        "mock" if (settings.use_mock_agents or not settings.has_gemini_key) else "gemini",
     )
-    if not settings.has_anthropic_key:
+    if not settings.has_gemini_key:
         logger.warning(
-            "ANTHROPIC_API_KEY is not set — sessions will run with mock agents. "
+            "GEMINI_API_KEY is not set — sessions will run with mock agents. "
             "Set it in backend/.env for real negotiation."
         )
 
@@ -70,17 +70,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.store = InMemorySessionStore()
     app.state.manager = ConnectionManager()
     app.state.transcriber = WhisperTranscriber(settings)
-    app.state.anthropic_client = None
+    app.state.llm_client = None
     app.state.offer_parser = None
 
-    # Only construct the SDK client when there's a key to use; the mock-agent
-    # path must work with no credentials at all.
-    if settings.has_anthropic_key:
-        from app.agents.llm_agent import build_anthropic_client
+    # Only construct the provider client when there's a key to use; the
+    # mock-agent path must work with no credentials at all.
+    if settings.has_gemini_key:
+        from app.llm_client import build_llm_client
         from app.speech.parse_offer import VoiceOfferParser
 
-        app.state.anthropic_client = build_anthropic_client(settings)
-        app.state.offer_parser = VoiceOfferParser(app.state.anthropic_client, settings)
+        app.state.llm_client = build_llm_client(settings)
+        app.state.offer_parser = VoiceOfferParser(app.state.llm_client, settings)
 
     # `allow_credentials` must be False alongside a wildcard origin — the CORS
     # spec forbids the combination and Starlette silently drops the header.

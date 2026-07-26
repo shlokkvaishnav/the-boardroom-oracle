@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 DEFAULT_ORIGINS = "http://localhost:3000,http://localhost:5173,http://localhost:8080"
 
@@ -20,15 +17,25 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    # --- Anthropic ---
-    anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-opus-5"
-    # Reasoning depth, and therefore per-turn latency. `low` keeps a live demo
-    # moving; raise it if agents feel shallow.
-    anthropic_effort: Effort = "low"
-    anthropic_max_tokens: int = 2048
+    # --- Gemini ---
+    gemini_api_key: str | None = None
+    #: Free-tier eligibility moves; verify the current list in AI Studio
+    #: (https://aistudio.google.com/rate-limit) before a demo.
+    gemini_model: str = "gemini-3.6-flash"
+    gemini_max_output_tokens: int = 2048
+
+    #: Free-tier limits are per-minute and low (historically ~15 RPM on flash).
+    #: Calls are serialized with at least this gap, so a round of three agents
+    #: paces itself instead of bursting into a 429.
+    llm_min_interval_seconds: float = 4.0
+    #: Attempts per call when the API returns 429/5xx, including the first.
+    llm_max_attempts: int = 3
+    #: First backoff wait; doubles each attempt (2s, 4s, ...).
+    llm_backoff_base_seconds: float = 2.0
+    llm_timeout_seconds: float = 60.0
+
     #: Force the scripted/random agents even when a key is present. Useful for
-    #: rehearsing the demo without spending tokens.
+    #: rehearsing the demo without spending quota.
     use_mock_agents: bool = False
 
     # --- CORS ---
@@ -39,7 +46,10 @@ class Settings(BaseSettings):
 
     # --- Negotiation ---
     rounds: int = 6
-    turn_delay_seconds: float = 3.0
+    #: Doubles as demo pacing and as rate-limit headroom: with a call every
+    #: ~4s minimum, a deliberate gap between turns keeps the whole round under
+    #: the free tier's per-minute budget and reads as agents "thinking".
+    turn_delay_seconds: float = 2.5
     pool_resource: str = "budget"
     pool_total: float = 100.0
 
@@ -54,8 +64,8 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
 
     @property
-    def has_anthropic_key(self) -> bool:
-        return bool(self.anthropic_api_key and self.anthropic_api_key.strip())
+    def has_gemini_key(self) -> bool:
+        return bool(self.gemini_api_key and self.gemini_api_key.strip())
 
 
 @lru_cache(maxsize=1)

@@ -1,9 +1,10 @@
 """The structured JSON contract for a single agent turn.
 
-This is what every agent — LLM or mock — must return. The Anthropic SDK
-validates responses against `AgentDecision` directly via
-`messages.parse(output_format=AgentDecision)`; anything that fails validation
-goes down the retry-then-safe-default path in `agents/llm_agent.py`.
+This is what every agent — LLM or mock — must return. Gemini's JSON mode is
+handed this schema directly (`response_schema`), so the model is constrained
+rather than asked nicely; the response is then validated against it anyway, and
+anything that fails goes down the retry-then-safe-default path in
+`agents/llm_agent.py`.
 
 These models are internal (agent <-> engine), not part of the frontend
 contract, so they deliberately do *not* inherit from `ContractModel`.

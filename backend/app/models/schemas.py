@@ -1,8 +1,8 @@
 """The wire contract with the frontend.
 
-Field names here are load-bearing: the Lovable frontend is written against
-them. `tests/test_schemas.py` pins the exact serialized JSON so a rename can't
-slip through unnoticed.
+Field names here are load-bearing: the frontend is written against them, via
+`frontend/src/lib/negotiation/adapter.ts`. `tests/test_schemas.py` pins the
+exact serialized JSON so a rename can't slip through unnoticed.
 
 Note on `from`: it's a Python keyword, so the attribute is `from_` and carries
 `alias="from"`. FastAPI serializes response models with `by_alias=True` by

@@ -1,22 +1,19 @@
 """Turn a free-form spoken sentence into a structured offer.
 
-One Claude call with a JSON Schema, the same retry-once-then-give-up ladder as
-the agents, and a hard validation pass afterwards. "Give up" here means
-returning `None` rather than a safe default: an offer the system isn't sure
-about must never be queued silently — the endpoint hands the transcript and a
-`null` back so a person can decide.
+One Gemini call in JSON mode, one retry, then a hard validation pass against
+the live table. "Give up" here means returning `None` rather than a safe
+default: an offer the system isn't sure about must never be queued silently —
+the endpoint hands the transcript and a `null` back so a person can decide.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-from typing import Any
 
-from anthropic import AsyncAnthropic
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.config import Settings
+from app.llm_client import LLMClient, LLMError
 from app.models.schemas import AgentInfo, OfferSchema
 
 logger = logging.getLogger("boardroom.speech")
@@ -45,14 +42,11 @@ class VoiceOfferDraft(BaseModel):
     )
 
 
-DRAFT_SCHEMA: dict[str, Any] = VoiceOfferDraft.model_json_schema()
-
-
 class VoiceOfferParser:
     """Free-form transcript -> validated `OfferSchema`, or `None`."""
 
-    def __init__(self, client: AsyncAnthropic, settings: Settings) -> None:
-        self._client = client
+    def __init__(self, llm: LLMClient, settings: Settings) -> None:
+        self._llm = llm
         self._settings = settings
 
     def system_prompt(self, parties: list[AgentInfo], resource: str, speaker_id: str) -> str:
@@ -76,8 +70,6 @@ class VoiceOfferParser:
                 "  - Set understood=false if no clear recipient or no clear amount was "
                 "    given, or if the sentence is a question rather than an offer.",
                 "  - Never guess an amount that wasn't said.",
-                "",
-                "Return only a JSON object matching the schema.",
             ]
         )
 
@@ -92,54 +84,30 @@ class VoiceOfferParser:
         if not transcript.strip():
             return None
 
-        messages: list[dict[str, Any]] = [
-            {"role": "user", "content": f"Spoken sentence:\n{transcript}"}
-        ]
+        system = self.system_prompt(parties, resource, speaker_id)
+        prompt = f"Spoken sentence:\n{transcript}"
 
         for attempt in (1, 2):
-            raw = ""
             try:
-                raw = await self._request(
-                    messages, self.system_prompt(parties, resource, speaker_id)
+                raw = await self._llm.generate_structured(
+                    prompt, VoiceOfferDraft, system=system
                 )
-                draft = VoiceOfferDraft.model_validate_json(raw)
+                draft = VoiceOfferDraft.model_validate(raw)
                 return self._to_offer(draft, parties, resource, speaker_id)
-            except (ValidationError, json.JSONDecodeError, ValueError) as exc:
-                logger.warning("voice parse attempt %d failed: %s", attempt, exc)
+
+            except ValidationError as exc:
+                logger.warning("voice parse attempt %d failed validation: %s", attempt, exc)
                 if attempt == 1:
-                    messages = [
-                        *messages,
-                        {"role": "assistant", "content": raw or "(empty response)"},
-                        {
-                            "role": "user",
-                            "content": (
-                                f"That was rejected: {exc}\n"
-                                "Reply again with only a JSON object matching the schema."
-                            ),
-                        },
-                    ]
-            except Exception as exc:
+                    prompt = (
+                        f"Spoken sentence:\n{transcript}\n\n"
+                        f"---\nYour previous reply was rejected: {exc}\n"
+                        "Reply again with a corrected JSON object."
+                    )
+
+            except LLMError as exc:
                 logger.warning("voice parse call failed on attempt %d: %s", attempt, exc)
 
         return None
-
-    async def _request(self, messages: list[dict[str, Any]], system: str) -> str:
-        response = await self._client.messages.create(
-            model=self._settings.anthropic_model,
-            max_tokens=512,
-            system=system,
-            messages=messages,  # type: ignore[arg-type]
-            output_config={
-                "format": {"type": "json_schema", "schema": DRAFT_SCHEMA},
-                "effort": "low",
-            },
-        )
-        if getattr(response, "stop_reason", None) == "refusal":
-            raise ValueError("model declined to parse this transcript")
-        for block in response.content:
-            if getattr(block, "type", None) == "text":
-                return block.text
-        raise ValueError("response contained no text block")
 
     @staticmethod
     def _to_offer(

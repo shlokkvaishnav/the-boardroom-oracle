@@ -1,6 +1,6 @@
 # Boardroom Oracle — Backend
 
-FastAPI service running a live multi-agent negotiation: three Claude-backed
+FastAPI service running a live multi-agent negotiation: three Gemini-backed
 agents with distinct personas and hidden objectives trade a shared resource
 pool over a fixed number of rounds, while a human can inject offers by typing
 or by voice. State streams to the frontend over a WebSocket.
@@ -13,7 +13,7 @@ Everything runs in Docker. **No local Python setup is required or supported** �
 see [Why Docker](#why-docker) below.
 
 ```bash
-cp backend/.env.example backend/.env   # then paste your ANTHROPIC_API_KEY
+cp backend/.env.example backend/.env   # then paste your GEMINI_API_KEY
 docker compose -f backend/docker-compose.yml up --build
 ```
 
@@ -53,6 +53,39 @@ Two other things the Dockerfile does deliberately:
   `WHISPER_PRELOAD=true` to load it at boot instead of during the first voice
   request — worth doing before a live demo.
 
+## Free-tier rate limits
+
+The Gemini free tier is limited **per minute** (historically ~15 RPM on flash
+models; verify the current numbers in AI Studio). A negotiation round fires one
+call per persona, so the naive implementation — three concurrent calls — is the
+fastest possible route to a 429.
+
+All of this lives in **one file**, `app/llm_client.py`, which is the only module
+in the codebase that touches a provider. Swapping provider or adding a paid key
+is a change to that file alone; everything else calls
+`generate_structured(prompt, schema) -> dict`.
+
+Three defences, in order:
+
+1. **Serialization.** A semaphore of one, plus a wait until
+   `LLM_MIN_INTERVAL_SECONDS` has elapsed since the previous call started. A
+   burst becomes a queue. At the 4s default, three agents take ~12s of calls —
+   comfortably inside a 15 RPM budget.
+2. **Backoff.** 429 and 5xx are retried with exponential backoff (2s, 4s, …)
+   up to `LLM_MAX_ATTEMPTS`. 4xx that won't fix itself (400/403/404) is *not*
+   retried — that would just burn quota.
+3. **Pacing.** `TURN_DELAY_SECONDS` adds a deliberate gap between turns. It
+   keeps the round inside the per-minute budget and happens to read as agents
+   thinking, which is better for the demo than instant resolution.
+
+These are all transport-level. A response that arrives fine but fails schema
+validation is a *different* problem, handled one layer up by the agent, which
+retries once with the validation error fed back into the prompt.
+
+Structured output uses Gemini's native JSON mode (`response_mime_type` +
+`response_schema`) rather than asking for JSON in the prompt — the model is
+constrained rather than trusted. Pydantic validation stays as the safety net.
+
 ### Why uv
 
 `uv` handles dependency management, and lives **inside the image** — nothing to
@@ -77,15 +110,18 @@ All optional except the API key. Copy `.env.example` to `.env`; it is gitignored
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | *(none)* | Required for real agents. Without it, sessions run on mock agents. |
-| `ANTHROPIC_MODEL` | `claude-opus-5` | Model used for agent turns and voice parsing. |
-| `ANTHROPIC_EFFORT` | `low` | `low`…`max`. Controls reasoning depth, and therefore **per-turn latency**. Raise it if agents feel shallow; keep it low to keep a live demo moving. |
-| `ANTHROPIC_MAX_TOKENS` | `2048` | Per-turn output cap. |
-| `USE_MOCK_AGENTS` | `false` | Force mock agents even with a key — rehearse without spending tokens. |
+| `GEMINI_API_KEY` | *(none)* | Required for real agents. Without it, sessions run on mock agents. |
+| `GEMINI_MODEL` | `gemini-3.6-flash` | Model for agent turns and voice parsing. **Free-tier eligibility changes** — check <https://aistudio.google.com/rate-limit> before a demo. |
+| `GEMINI_MAX_OUTPUT_TOKENS` | `2048` | Per-turn output cap. |
+| `LLM_MIN_INTERVAL_SECONDS` | `4.0` | Minimum gap between calls. See [Free-tier rate limits](#free-tier-rate-limits). |
+| `LLM_MAX_ATTEMPTS` | `3` | Attempts per call on 429/5xx, including the first. |
+| `LLM_BACKOFF_BASE_SECONDS` | `2.0` | First backoff wait; doubles each attempt. |
+| `LLM_TIMEOUT_SECONDS` | `60.0` | Per-call timeout. |
+| `USE_MOCK_AGENTS` | `false` | Force mock agents even with a key — rehearse without spending quota. |
 | `ALLOWED_ORIGINS` | `localhost:3000,5173,8080` | Comma-separated CORS allowlist. **Add the frontend's deployed URL here.** |
 | `CORS_ALLOW_ALL` | `false` | Dev escape hatch. Also disables credentialed CORS, which the spec forbids alongside a wildcard. |
 | `ROUNDS` | `6` | Rounds per game. |
-| `TURN_DELAY_SECONDS` | `3.0` | Pause between turns. This is the demo's pacing dial — it's what gives the audience time to read each move. |
+| `TURN_DELAY_SECONDS` | `2.5` | Pause between turns. Doubles as the demo's pacing dial and as rate-limit headroom. |
 | `POOL_RESOURCE` | `budget` | Name of the contested resource. |
 | `POOL_TOTAL` | `100.0` | Size of the pool, split evenly at the start. |
 | `WHISPER_MODEL` | `base` | faster-whisper size (`tiny`…`large-v3`). |
@@ -257,10 +293,11 @@ the most interesting thing on screen, and both are shown in the agent's prompt.
 docker compose -f backend/docker-compose.yml run --rm --no-deps api pytest -q
 ```
 
-**201 tests. No API key, no network, and no model weights required** — every
-Claude call and every Whisper call is mocked at the seam. That's the point of
+**214 tests. No API key, no network, and no model weights required** — every
+Gemini call and every Whisper call is mocked at the seam. That's the point of
 `agents/base.py:Agent` and `speech/transcribe.py:Transcriber`: the engine can't
-tell a scripted agent from a real one.
+tell a scripted agent from a real one. `test_llm_client.py` covers the pacing
+and backoff behaviour directly, including that calls never run concurrently.
 
 Two things worth knowing before editing tests:
 
@@ -282,6 +319,7 @@ Two things worth knowing before editing tests:
 app/
   main.py             composition root — everything shared hangs on app.state
   config.py           pydantic-settings
+  llm_client.py       THE ONLY MODULE THAT TALKS TO A PROVIDER (pacing, backoff)
   api/routes.py       REST endpoints
   api/ws.py           /ws/negotiation
   models/schemas.py   the frontend wire contract
@@ -289,7 +327,7 @@ app/
   models/agent_io.py  AgentDecision — what an agent turn must return
   agents/personas.py  the cast, styles, and hidden objectives
   agents/base.py      Agent protocol + TurnContext — the swap point
-  agents/llm_agent.py Claude-backed agent, retry then safe default
+  agents/llm_agent.py Gemini-backed agent, retry then safe default
   agents/mock_agent.py scripted + seeded-random doubles
   agents/opponent_model.py belief state
   engine/negotiation.py the state machine

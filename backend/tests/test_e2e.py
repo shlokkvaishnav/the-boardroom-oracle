@@ -31,7 +31,7 @@ COOP, MAXI, TIT = "cooperator", "maximizer", "titfortat"
 
 def make_settings(**overrides: Any) -> Settings:
     base: dict[str, Any] = {
-        "anthropic_api_key": None,
+        "gemini_api_key": None,
         "use_mock_agents": True,
         "rounds": 6,
         "turn_delay_seconds": 0.0,

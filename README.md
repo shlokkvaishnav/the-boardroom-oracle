@@ -10,7 +10,7 @@ scored.
 
 | Path        | What it is                                                                  |
 | ----------- | --------------------------------------------------------------------------- |
-| `backend/`  | FastAPI service: negotiation engine, Claude agents, trust graph, WebSocket.  |
+| `backend/`  | FastAPI service: negotiation engine, Gemini agents, trust graph, WebSocket.  |
 | `frontend/` | TanStack Start single-page arena: force-directed trust graph, thought feed, offer ledger, voice capture. |
 
 ## Running the backend
@@ -20,7 +20,7 @@ here: `faster-whisper`'s engine has no wheel for this machine's Python 3.14, so
 the image pins 3.12).
 
 ```bash
-cp backend/.env.example backend/.env   # add your ANTHROPIC_API_KEY
+cp backend/.env.example backend/.env   # add your GEMINI_API_KEY
 docker compose -f backend/docker-compose.yml up --build
 ```
 

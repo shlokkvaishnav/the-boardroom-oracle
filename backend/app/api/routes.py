@@ -67,13 +67,12 @@ def build_agents(request: Request, settings: Settings) -> list:
     demonstrable end to end on a laptop with no key, and the engine cannot
     tell the two apart.
     """
-    if settings.has_anthropic_key and not settings.use_mock_agents:
+    if settings.has_gemini_key and not settings.use_mock_agents:
         from app.agents.llm_agent import build_llm_agents
 
-        client = request.app.state.anthropic_client
-        return build_llm_agents(client, settings)
+        return build_llm_agents(request.app.state.llm_client, settings)
 
-    reason = "USE_MOCK_AGENTS is set" if settings.use_mock_agents else "no ANTHROPIC_API_KEY"
+    reason = "USE_MOCK_AGENTS is set" if settings.use_mock_agents else "no GEMINI_API_KEY"
     logger.warning("running with mock agents (%s)", reason)
     return [RandomAgent(persona.id, seed=index) for index, persona in enumerate(PERSONAS)]
 

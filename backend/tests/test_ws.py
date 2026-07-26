@@ -15,7 +15,7 @@ from app.ws.broadcast import ConnectionManager
 
 def make_settings(**overrides: Any) -> Settings:
     base: dict[str, Any] = {
-        "anthropic_api_key": None,
+        "gemini_api_key": None,
         "use_mock_agents": True,
         "rounds": 2,
         "turn_delay_seconds": 0.0,

@@ -22,7 +22,7 @@ MAXI = "maximizer"
 
 def make_settings(**overrides: Any) -> Settings:
     base: dict[str, Any] = {
-        "anthropic_api_key": None,
+        "gemini_api_key": None,
         "use_mock_agents": True,
         "rounds": 2,
         # Long enough that the session is still in progress when the test makes
@@ -373,17 +373,17 @@ def test_a_missing_file_field_is_422(api: TestClient) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_no_anthropic_client_is_built_without_a_key() -> None:
-    app = create_app(make_settings(anthropic_api_key=None))
+def test_no_llm_client_is_built_without_a_key() -> None:
+    app = create_app(make_settings(gemini_api_key=None))
 
-    assert app.state.anthropic_client is None
+    assert app.state.llm_client is None
     assert app.state.offer_parser is None
 
 
 def test_a_key_builds_the_client_and_the_voice_parser() -> None:
-    app = create_app(make_settings(anthropic_api_key="sk-ant-fake", use_mock_agents=True))
+    app = create_app(make_settings(gemini_api_key="fake-key", use_mock_agents=True))
 
-    assert app.state.anthropic_client is not None
+    assert app.state.llm_client is not None
     assert app.state.offer_parser is not None
 
 
