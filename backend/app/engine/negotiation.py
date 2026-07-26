@@ -88,12 +88,15 @@ class NegotiationEngine:
         settings: Settings,
         emit: EventEmitter | None = None,
         personas: tuple[Persona, ...] = PERSONAS,
+        context_topic: str | None = None,
     ) -> None:
         self.session_id = session_id
         self._agents = list(agents)
         self._settings = settings
         self._emit_cb: EventEmitter = emit or _noop_emitter
         self._personas = personas
+        #: Shared real-world premise, handed to every party identically.
+        self.context_topic = (context_topic or "").strip() or None
 
         self.total_rounds = settings.rounds
         self.pool = Pool(resource=settings.pool_resource, total=settings.pool_total)
@@ -223,6 +226,7 @@ class NegotiationEngine:
             recent_offers=list(self.offer_log[-RECENT_OFFER_WINDOW:]),
             beliefs=self.beliefs.get(agent_id),
             trust_row=self.graph.trust_toward(agent_id, self.graph.party_ids),
+            context_topic=self.context_topic,
         )
 
     def _apply(self, agent_id: str, decision: AgentDecision) -> list[WSMessage]:

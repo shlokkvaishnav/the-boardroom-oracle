@@ -30,6 +30,7 @@ __all__ = [
     "OfferSchema",
     "AgentThought",
     "NegotiationState",
+    "SessionStartRequest",
     "SessionStartResponse",
     "VoiceOfferResponse",
     "Confidence",
@@ -162,6 +163,24 @@ class NegotiationState(ContractModel):
 # --------------------------------------------------------------------------- #
 
 Confidence = Literal["high", "low"]
+
+
+class SessionStartRequest(ContractModel):
+    """Optional body for `POST /api/session/start`.
+
+    The whole body is optional, so a bare POST still starts a plain negotiation —
+    the pre-existing behaviour, and what the frontend's START button does.
+    """
+
+    context_topic: str | None = Field(
+        default=None,
+        max_length=500,
+        description=(
+            "A real-world premise shared with every party, e.g. 'the 2026 copper "
+            "supply squeeze'. Adds context to the same game; it does not change "
+            "the rules. Also what enables the agents' web_search tool."
+        ),
+    )
 
 
 class SessionStartResponse(ContractModel):

@@ -57,6 +57,7 @@ def make_context(
     *,
     pending: list[PendingOffer] | None = None,
     recent: list[OfferRecord] | None = None,
+    context_topic: str | None = None,
 ) -> TurnContext:
     parties = all_agent_infos()
     party_ids = [party.id for party in parties]
@@ -71,6 +72,7 @@ def make_context(
         recent_offers=recent or [],
         beliefs=BeliefSet.for_agent(agent_id, party_ids),
         trust_row={pid: 0.5 for pid in party_ids if pid != agent_id},
+        context_topic=context_topic,
     )
 
 
@@ -320,3 +322,45 @@ def test_build_llm_agents_returns_one_agent_per_persona_in_seating_order() -> No
     agents = build_llm_agents(FakeLLM(), make_settings())  # type: ignore[arg-type]
 
     assert [agent.id for agent in agents] == [persona.id for persona in PERSONAS]
+
+
+# --------------------------------------------------------------------------- #
+# Session context topic
+#
+# A shared real-world premise, added to the same game rather than changing it.
+# --------------------------------------------------------------------------- #
+
+
+def test_the_context_topic_appears_in_the_system_prompt() -> None:
+    agent, _ = make_agent()
+
+    prompt = agent.system_prompt("the 2026 copper supply squeeze")
+
+    assert "the 2026 copper supply squeeze" in prompt
+    assert "change the rules" in prompt
+
+
+def test_no_context_topic_leaves_the_system_prompt_as_it_was() -> None:
+    """A plain session must be byte-identical to before the feature existed."""
+    agent, _ = make_agent()
+
+    assert agent.system_prompt(None) == agent.system_prompt()
+    assert "THE MATTER ON THE TABLE" not in agent.system_prompt()
+
+
+def test_the_context_topic_is_stable_across_turns() -> None:
+    """Session-level, not per-turn — it must not make the system prompt volatile."""
+    agent, _ = make_agent()
+    topic = "the 2026 copper supply squeeze"
+
+    assert agent.system_prompt(topic) == agent.system_prompt(topic)
+
+
+async def test_the_turn_context_topic_reaches_the_system_prompt() -> None:
+    agent, llm = make_agent(
+        {"action": "pass", "thought": "waiting", "opponent_updates": []}
+    )
+
+    await agent.decide(make_context(context_topic="lithium prices"))
+
+    assert "lithium prices" in llm.calls[0]["system"]

@@ -393,3 +393,44 @@ def test_cors_headers_are_present_on_api_routes(api: TestClient) -> None:
     response = api.get("/api/session/state", headers={"Origin": "http://localhost:3000"})
 
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+# --------------------------------------------------------------------------- #
+# Session context topic
+# --------------------------------------------------------------------------- #
+
+
+def test_start_still_works_with_no_body_at_all(api: TestClient) -> None:
+    """The frontend's START button posts nothing; that must keep working."""
+    response = api.post("/api/session/start")
+
+    assert response.status_code == 200
+    assert response.json()["session_id"]
+
+
+def test_start_accepts_a_context_topic(api: TestClient) -> None:
+    response = api.post(
+        "/api/session/start", json={"context_topic": "the 2026 copper supply squeeze"}
+    )
+
+    assert response.status_code == 200
+
+
+def test_an_explicitly_null_context_topic_is_accepted(api: TestClient) -> None:
+    response = api.post("/api/session/start", json={"context_topic": None})
+
+    assert response.status_code == 200
+
+
+def test_an_unknown_field_on_start_is_rejected(api: TestClient) -> None:
+    """extra='forbid' keeps contract drift loud."""
+    response = api.post("/api/session/start", json={"contextTopic": "camelCase typo"})
+
+    assert response.status_code == 422
+
+
+def test_an_overlong_context_topic_is_rejected(api: TestClient) -> None:
+    """It goes into every system prompt, so length is capped."""
+    response = api.post("/api/session/start", json={"context_topic": "x" * 501})
+
+    assert response.status_code == 422

@@ -41,12 +41,30 @@ class LLMAgent:
     # Prompts
     # ------------------------------------------------------------------ #
 
-    def system_prompt(self) -> str:
-        """Static per persona, so it stays byte-identical across turns."""
+    def system_prompt(self, context_topic: str | None = None) -> str:
+        """Static per persona *and* per session, so it stays byte-identical across turns.
+
+        `context_topic` is a session-level premise, not a per-turn value, so it
+        belongs here rather than in `render_turn` — it stays stable for the
+        whole game and keeps the volatile half of the prompt volatile.
+        """
+        premise = (
+            [
+                "THE MATTER ON THE TABLE:",
+                f"  You are negotiating resource allocation in the context of: {context_topic}",
+                "  Every party has been given this same context. It frames what the "
+                "  resource represents and what a good deal looks like — it does not "
+                "  change the rules below.",
+                "",
+            ]
+            if context_topic
+            else []
+        )
         return "\n".join(
             [
                 f"You are {self.persona.name}, a negotiator at a four-seat boardroom table.",
                 "",
+                *premise,
                 f"YOUR PUBLIC STYLE: {self.persona.style}. {self.persona.public_brief}",
                 "",
                 "YOUR HIDDEN OBJECTIVE (never state it outright, never reveal it to the "
@@ -145,7 +163,7 @@ class LLMAgent:
 
     async def decide(self, context: TurnContext) -> AgentDecision:
         """Always returns a valid decision. Never raises into the game loop."""
-        system = self.system_prompt()
+        system = self.system_prompt(context.context_topic)
         prompt = self.render_turn(context)
         last_error = "unknown error"
 

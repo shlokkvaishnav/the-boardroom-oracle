@@ -19,6 +19,7 @@ from app.engine.negotiation import NegotiationEngine, OfferRejected
 from app.models.schemas import (
     NegotiationState,
     OfferSchema,
+    SessionStartRequest,
     SessionStartResponse,
     VoiceOfferResponse,
 )
@@ -85,21 +86,33 @@ def build_agents(request: Request, settings: Settings) -> list:
 @router.post("/start", response_model=SessionStartResponse)
 async def start_session(
     request: Request,
+    body: SessionStartRequest | None = None,
     settings: Settings = Depends(get_settings_dep),
     store: SessionStore = Depends(get_store),
 ) -> SessionStartResponse:
-    """Initialise a session and start the round loop in the background."""
+    """Initialise a session and start the round loop in the background.
+
+    The body is optional so a bare POST still starts a plain negotiation —
+    which is what the frontend's START button sends.
+    """
+    context_topic = body.context_topic if body else None
     engine = NegotiationEngine(
         session_id=uuid.uuid4().hex[:12],
         agents=build_agents(request, settings),
         settings=settings,
         emit=request.app.state.manager.broadcast,
+        context_topic=context_topic,
     )
     # Replacing any previous session stops its loop first.
     await store.put(engine)
     engine.start()
 
-    logger.info("session %s started (%d rounds)", engine.session_id, engine.total_rounds)
+    logger.info(
+        "session %s started (%d rounds%s)",
+        engine.session_id,
+        engine.total_rounds,
+        f", context: {engine.context_topic!r}" if engine.context_topic else "",
+    )
     return SessionStartResponse(session_id=engine.session_id)
 
 

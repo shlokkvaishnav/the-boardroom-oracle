@@ -67,6 +67,10 @@ class TurnContext:
     #: agent trusts them. Shown next to the private belief so the model can
     #: notice where the public record and its own read diverge.
     trust_row: dict[str, float] = field(default_factory=dict)
+    #: Optional real-world premise for the whole session, given to every party
+    #: identically. Adds context to the same game; it does not change the rules.
+    #: Its presence is also what enables the `web_search` tool for the turn.
+    context_topic: str | None = None
 
     @property
     def my_holdings(self) -> float:
