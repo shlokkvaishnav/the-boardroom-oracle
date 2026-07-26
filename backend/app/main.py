@@ -7,6 +7,7 @@ hung on `app.state`. Nothing else in the codebase reaches for a global.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -49,11 +50,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception:
             logger.exception("whisper preload failed; will retry on first request")
 
+    sweeper = asyncio.create_task(_sweep_expired_sessions(app))
     try:
         yield
     finally:
+        sweeper.cancel()
+        try:
+            await sweeper
+        except asyncio.CancelledError:
+            pass
         await app.state.store.clear()
         logger.info("shutting down")
+
+
+async def _sweep_expired_sessions(app: FastAPI) -> None:
+    """Evict idle sessions on a timer for the whole process lifetime.
+
+    `put()` also sweeps, so capacity is never refused on account of stale
+    sessions. This loop exists for the other case: a box that has gone quiet
+    should let go of its engines rather than hold them until someone knocks.
+    """
+    settings: Settings = app.state.settings
+    interval = max(1.0, settings.session_sweep_interval_seconds)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await app.state.store.sweep()
+        except Exception:
+            # A failed sweep must never kill the loop that does the sweeping.
+            logger.exception("session sweep failed; continuing")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -67,7 +92,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     app.state.settings = settings
-    app.state.store = InMemorySessionStore()
+    app.state.store = InMemorySessionStore(
+        max_sessions=settings.max_concurrent_sessions,
+        ttl_seconds=settings.session_ttl_seconds,
+    )
     app.state.manager = ConnectionManager()
     app.state.transcriber = WhisperTranscriber(settings)
     app.state.llm_client = None

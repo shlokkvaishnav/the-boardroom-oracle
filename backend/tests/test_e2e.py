@@ -243,10 +243,12 @@ def test_a_session_played_through_the_api_reaches_a_valid_reveal() -> None:
     """Start via HTTP, let it run, and read the reveal back off /state."""
     client = TestClient(create_app(make_settings(rounds=4)))
 
-    assert client.post("/api/session/start").status_code == 200
+    started = client.post("/api/session/start")
+    assert started.status_code == 200
+    sid = started.json()["session_id"]
 
     for _ in range(400):
-        body = client.get("/api/session/state").json()
+        body = client.get(f"/api/session/{sid}/state").json()
         if body["revealed_objectives"] is not None:
             break
     else:  # pragma: no cover
@@ -260,8 +262,8 @@ def test_a_session_played_through_the_api_reaches_a_valid_reveal() -> None:
     assert len(state.trust_graph.edges) == 12
 
     # And the session can be torn down and started again cleanly.
-    assert client.post("/api/session/reset").json()["status"] == "reset"
-    assert client.get("/api/session/state").status_code == 404
+    assert client.post(f"/api/session/{sid}/reset").json()["status"] == "reset"
+    assert client.get(f"/api/session/{sid}/state").status_code == 404
     assert client.post("/api/session/start").status_code == 200
 
 

@@ -93,6 +93,17 @@ class LLMClient:
         self._settings = settings
         self._client = client or genai.Client(api_key=settings.gemini_api_key)
         # Concurrency of exactly one: the free tier punishes parallelism.
+        #
+        # THIS QUEUE IS GLOBAL ACROSS EVERY SESSION, DELIBERATELY. One
+        # LLMClient is built in `main.py` and shared by all of them, so an
+        # agent turn in session A waits behind an agent turn in session B.
+        #
+        # Do not "fix" this by giving each session its own client or semaphore.
+        # The limit being protected is a per-API-key quota, not a per-session
+        # one; N private queues would fire N concurrent calls against the same
+        # key and multiply the 429 rate by N. The visible consequence — rounds
+        # getting slower as more sessions run — is the rate limit working, not
+        # a bug.
         self._gate = asyncio.Semaphore(1)
         self._last_call_started = 0.0
 

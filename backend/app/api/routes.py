@@ -23,7 +23,7 @@ from app.models.schemas import (
     SessionStartResponse,
     VoiceOfferResponse,
 )
-from app.session.store import SessionStore
+from app.session.store import AtCapacity, SessionStore
 from app.speech.transcribe import Transcriber
 
 logger = logging.getLogger("boardroom.api")
@@ -51,12 +51,22 @@ def get_transcriber(request: Request) -> Transcriber:
     return request.app.state.transcriber
 
 
-async def require_session(store: SessionStore = Depends(get_store)) -> NegotiationEngine:
-    engine = await store.current()
+async def require_session(
+    session_id: str, store: SessionStore = Depends(get_store)
+) -> NegotiationEngine:
+    """Resolve a path `session_id` to its engine.
+
+    A 404 here means one of two things — the id was never real, or its session
+    was swept for idleness. Both are the same thing to a client: start again.
+    """
+    engine = await store.get(session_id)
     if engine is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No active session. POST /api/session/start first.",
+            detail=(
+                f"No session {session_id!r}. It may have expired — "
+                "POST /api/session/start for a new one."
+            ),
         )
     return engine
 
@@ -100,15 +110,30 @@ async def start_session(
     which is what the frontend's START button sends.
     """
     context_topic = body.context_topic if body else None
+    session_id = uuid.uuid4().hex[:12]
     engine = NegotiationEngine(
-        session_id=uuid.uuid4().hex[:12],
+        session_id=session_id,
         agents=build_agents(request, settings),
         settings=settings,
-        emit=request.app.state.manager.broadcast,
+        # Bound to this session, so its frames reach only its own viewers.
+        emit=request.app.state.manager.emitter_for(session_id),
         context_topic=context_topic,
     )
-    # Replacing any previous session stops its loop first.
-    await store.put(engine)
+    try:
+        await store.put(engine)
+    except AtCapacity as exc:
+        # 503 rather than 429: nothing about *this* caller is being throttled,
+        # the box is simply full. Retry-After gives the frontend something
+        # concrete to show instead of an arbitrary "try later".
+        logger.warning("rejected a session at capacity (%s)", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "At capacity right now — a few negotiations are already "
+                "running. Please try again in a few minutes."
+            ),
+            headers={"Retry-After": "120"},
+        ) from exc
     engine.start()
 
     logger.info(
@@ -120,12 +145,12 @@ async def start_session(
     return SessionStartResponse(session_id=engine.session_id)
 
 
-@router.get("/state", response_model=NegotiationState)
+@router.get("/{session_id}/state", response_model=NegotiationState)
 async def get_state(engine: NegotiationEngine = Depends(require_session)) -> NegotiationState:
     return engine.snapshot()
 
 
-@router.post("/inject-offer", response_model=NegotiationState)
+@router.post("/{session_id}/inject-offer", response_model=NegotiationState)
 async def inject_offer(
     offer: OfferSchema,
     engine: NegotiationEngine = Depends(require_session),
@@ -137,9 +162,10 @@ async def inject_offer(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.post("/voice-offer", response_model=VoiceOfferResponse)
+@router.post("/{session_id}/voice-offer", response_model=VoiceOfferResponse)
 async def voice_offer(
     request: Request,
+    session_id: str,
     file: UploadFile = File(...),
     settings: Settings = Depends(get_settings_dep),
     store: SessionStore = Depends(get_store),
@@ -171,9 +197,10 @@ async def voice_offer(
             detail=f"transcription unavailable: {exc}",
         ) from exc
 
-    # Parse against the live table when there is one, otherwise the default
-    # roster — so the preview still works before a session is started.
-    engine = await store.current()
+    # Parse against this session's table when it resolves, otherwise the default
+    # roster — so the preview still works for an expired or unknown id rather
+    # than throwing away audio the user already recorded.
+    engine = await store.get(session_id)
     parties = engine.snapshot().agents if engine else all_agent_infos()
     resource = engine.pool.resource if engine else settings.pool_resource
 
@@ -197,12 +224,17 @@ async def voice_offer(
     )
 
 
-@router.post("/reset")
-async def reset_session(store: SessionStore = Depends(get_store)) -> dict[str, str]:
-    """Tear down the current session, stopping its background loop."""
-    engine = await store.current()
-    await store.clear()
+@router.post("/{session_id}/reset")
+async def reset_session(
+    session_id: str, store: SessionStore = Depends(get_store)
+) -> dict[str, str]:
+    """Tear down one session, stopping its background loop.
+
+    Scoped to the id: resetting your own game must not stop anyone else's.
+    Safe to call for an id that is already gone.
+    """
+    engine = await store.remove(session_id)
     if engine is None:
-        return {"status": "no-session"}
-    logger.info("session %s reset", engine.session_id)
-    return {"status": "reset", "session_id": engine.session_id}
+        return {"status": "no-session", "session_id": session_id}
+    logger.info("session %s reset", session_id)
+    return {"status": "reset", "session_id": session_id}

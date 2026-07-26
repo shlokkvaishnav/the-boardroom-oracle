@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     #: rehearsing the demo without spending quota.
     use_mock_agents: bool = False
 
+    # --- Sessions ---
+    #: How many negotiations may run at once. The cap exists because provider
+    #: quota is per API *key*, not per session — N concurrent games burn the
+    #: same Gemini budget N times as fast. Raising it does not make anything
+    #: faster: every agent call from every session queues behind the same
+    #: global slot (see `llm_client.py`), so more sessions means slower rounds.
+    max_concurrent_sessions: int = 5
+    #: A session nobody has touched for this long is swept, so an abandoned
+    #: browser tab doesn't hold an engine and its round loop forever.
+    session_ttl_seconds: float = 600.0
+    session_sweep_interval_seconds: float = 60.0
+
     # --- CORS ---
     # Comma-separated rather than a JSON list: pydantic-settings parses complex
     # types as JSON, which makes a plain `A,B` env var a confusing hard error.

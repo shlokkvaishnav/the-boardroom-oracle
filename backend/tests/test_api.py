@@ -97,16 +97,16 @@ def test_start_returns_a_session_id(api: TestClient) -> None:
 
 
 def test_state_is_404_before_a_session_exists(api: TestClient) -> None:
-    response = api.get("/api/session/state")
+    sid = "no-such-session"
+    response = api.get(f"/api/session/{sid}/state")
 
     assert response.status_code == 404
     assert "start" in response.json()["detail"]
 
 
 def test_state_returns_the_contracted_shape_after_start(api: TestClient) -> None:
-    api.post("/api/session/start")
-
-    body = api.get("/api/session/state").json()
+    sid = api.post("/api/session/start").json()["session_id"]
+    body = api.get(f"/api/session/{sid}/state").json()
 
     assert set(body) == {
         "round",
@@ -134,28 +134,32 @@ def test_starting_twice_replaces_the_previous_session(api: TestClient) -> None:
 
 
 def test_reset_tears_down_the_session(api: TestClient) -> None:
-    api.post("/api/session/start")
-
-    response = api.post("/api/session/reset")
+    sid = api.post("/api/session/start").json()["session_id"]
+    response = api.post(f"/api/session/{sid}/reset")
 
     assert response.status_code == 200
     assert response.json()["status"] == "reset"
-    assert api.get("/api/session/state").status_code == 404
+    assert api.get(f"/api/session/{sid}/state").status_code == 404
 
 
 def test_reset_without_a_session_is_not_an_error(api: TestClient) -> None:
-    response = api.post("/api/session/reset")
+    sid = "no-such-session"
+    response = api.post(f"/api/session/{sid}/reset")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "no-session"}
+    assert response.json() == {"status": "no-session", "session_id": sid}
 
 
 def test_a_session_can_be_started_again_after_reset(api: TestClient) -> None:
-    api.post("/api/session/start")
-    api.post("/api/session/reset")
+    first = api.post("/api/session/start").json()["session_id"]
+    api.post(f"/api/session/{first}/reset")
 
-    assert api.post("/api/session/start").status_code == 200
-    assert api.get("/api/session/state").status_code == 200
+    second = api.post("/api/session/start").json()["session_id"]
+
+    assert second != first
+    assert api.get(f"/api/session/{second}/state").status_code == 200
+    # The reset id is gone for good rather than silently recycled.
+    assert api.get(f"/api/session/{first}/state").status_code == 404
 
 
 # --------------------------------------------------------------------------- #
@@ -166,10 +170,9 @@ def test_a_session_can_be_started_again_after_reset(api: TestClient) -> None:
 def test_inject_offer_accepts_the_documented_body_and_returns_state(
     api: TestClient,
 ) -> None:
-    api.post("/api/session/start")
-
+    sid = api.post("/api/session/start").json()["session_id"]
     response = api.post(
-        "/api/session/inject-offer",
+        f"/api/session/{sid}/inject-offer",
         json={"from": HUMAN_ID, "to": MAXI, "resource": "budget", "amount": 12.0},
     )
 
@@ -185,8 +188,9 @@ def test_inject_offer_accepts_the_documented_body_and_returns_state(
 
 
 def test_inject_offer_is_404_without_a_session(api: TestClient) -> None:
+    sid = "no-such-session"
     response = api.post(
-        "/api/session/inject-offer",
+        f"/api/session/{sid}/inject-offer",
         json={"from": HUMAN_ID, "to": MAXI, "resource": "budget", "amount": 12.0},
     )
 
@@ -205,19 +209,17 @@ def test_inject_offer_is_404_without_a_session(api: TestClient) -> None:
 def test_invalid_offers_are_400_with_a_readable_reason(
     api: TestClient, body: dict[str, Any], expected: str
 ) -> None:
-    api.post("/api/session/start")
-
-    response = api.post("/api/session/inject-offer", json=body)
+    sid = api.post("/api/session/start").json()["session_id"]
+    response = api.post(f"/api/session/{sid}/inject-offer", json=body)
 
     assert response.status_code == 400
     assert expected in response.json()["detail"]
 
 
 def test_a_malformed_body_is_422(api: TestClient) -> None:
-    api.post("/api/session/start")
-
+    sid = api.post("/api/session/start").json()["session_id"]
     response = api.post(
-        "/api/session/inject-offer",
+        f"/api/session/{sid}/inject-offer",
         json={"from": HUMAN_ID, "to": MAXI, "amount": "lots"},
     )
 
@@ -226,10 +228,9 @@ def test_a_malformed_body_is_422(api: TestClient) -> None:
 
 def test_unknown_fields_in_the_body_are_rejected(api: TestClient) -> None:
     """extra="forbid" makes contract drift visible rather than silent."""
-    api.post("/api/session/start")
-
+    sid = api.post("/api/session/start").json()["session_id"]
     response = api.post(
-        "/api/session/inject-offer",
+        f"/api/session/{sid}/inject-offer",
         json={
             "from": HUMAN_ID,
             "to": MAXI,
@@ -254,9 +255,8 @@ def test_voice_offer_returns_transcript_and_parsed_offer() -> None:
         OfferSchema(from_=HUMAN_ID, to=MAXI, resource="budget", amount=12.0)
     )
     client = TestClient(app)
-    client.post("/api/session/start")
-
-    body = client.post("/api/session/voice-offer", files=audio_upload()).json()
+    sid = client.post("/api/session/start").json()["session_id"]
+    body = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload()).json()
 
     assert set(body) == {"transcript", "parsed_offer", "confidence"}
     assert body["transcript"] == "give the maximizer twelve budget"
@@ -270,18 +270,20 @@ def test_voice_offer_returns_transcript_and_parsed_offer() -> None:
 
 
 def test_voice_offer_is_low_confidence_when_it_cannot_be_parsed() -> None:
+    sid = "no-such-session"
     app = create_app(make_settings())
     app.state.transcriber = FakeTranscriber(text="uhh what were we doing")
     app.state.offer_parser = FakeParser(None)
     client = TestClient(app)
 
-    body = client.post("/api/session/voice-offer", files=audio_upload()).json()
+    body = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload()).json()
 
     assert body["parsed_offer"] is None
     assert body["confidence"] == "low"
 
 
 def test_voice_offer_is_low_confidence_when_the_audio_was_unclear() -> None:
+    sid = "no-such-session"
     """Both halves must hold: a parse off muddy audio is still not trustworthy."""
     app = create_app(make_settings())
     app.state.transcriber = FakeTranscriber(avg_logprob=-2.5)
@@ -290,7 +292,7 @@ def test_voice_offer_is_low_confidence_when_the_audio_was_unclear() -> None:
     )
     client = TestClient(app)
 
-    body = client.post("/api/session/voice-offer", files=audio_upload()).json()
+    body = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload()).json()
 
     assert body["parsed_offer"] is not None
     assert body["confidence"] == "low"
@@ -304,12 +306,11 @@ def test_voice_offer_does_not_change_game_state() -> None:
         OfferSchema(from_=HUMAN_ID, to=MAXI, resource="budget", amount=12.0)
     )
     client = TestClient(app)
-    client.post("/api/session/start")
-
-    client.post("/api/session/voice-offer", files=audio_upload())
+    sid = client.post("/api/session/start").json()["session_id"]
+    client.post(f"/api/session/{sid}/voice-offer", files=audio_upload())
     human_offers = [
         offer
-        for offer in client.get("/api/session/state").json()["offer_log"]
+        for offer in client.get(f"/api/session/{sid}/state").json()["offer_log"]
         if offer["from"] == HUMAN_ID
     ]
 
@@ -317,6 +318,7 @@ def test_voice_offer_does_not_change_game_state() -> None:
 
 
 def test_voice_offer_works_before_a_session_is_started() -> None:
+    sid = "no-such-session"
     app = create_app(make_settings())
     app.state.transcriber = FakeTranscriber()
     app.state.offer_parser = FakeParser(
@@ -324,40 +326,43 @@ def test_voice_offer_works_before_a_session_is_started() -> None:
     )
     client = TestClient(app)
 
-    response = client.post("/api/session/voice-offer", files=audio_upload())
+    response = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload())
 
     assert response.status_code == 200
     assert response.json()["parsed_offer"] is not None
 
 
 def test_an_empty_upload_is_400() -> None:
+    sid = "no-such-session"
     app = create_app(make_settings())
     app.state.transcriber = FakeTranscriber()
     client = TestClient(app)
 
-    response = client.post("/api/session/voice-offer", files=audio_upload(b""))
+    response = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload(b""))
 
     assert response.status_code == 400
 
 
 def test_a_transcription_failure_is_503_not_a_crash() -> None:
+    sid = "no-such-session"
     app = create_app(make_settings())
     app.state.transcriber = FakeTranscriber(error=RuntimeError("model unavailable"))
     client = TestClient(app)
 
-    response = client.post("/api/session/voice-offer", files=audio_upload())
+    response = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload())
 
     assert response.status_code == 503
     assert "model unavailable" in response.json()["detail"]
 
 
 def test_voice_offer_with_no_parser_configured_still_returns_the_transcript() -> None:
+    sid = "no-such-session"
     """No API key means no parser — the transcript is still useful on its own."""
     app = create_app(make_settings())
     app.state.transcriber = FakeTranscriber()
     client = TestClient(app)
 
-    body = client.post("/api/session/voice-offer", files=audio_upload()).json()
+    body = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload()).json()
 
     assert body["transcript"] == "give the maximizer twelve budget"
     assert body["parsed_offer"] is None
@@ -365,7 +370,8 @@ def test_voice_offer_with_no_parser_configured_still_returns_the_transcript() ->
 
 
 def test_a_missing_file_field_is_422(api: TestClient) -> None:
-    assert api.post("/api/session/voice-offer").status_code == 422
+    sid = "no-such-session"
+    assert api.post(f"/api/session/{sid}/voice-offer").status_code == 422
 
 
 # --------------------------------------------------------------------------- #
@@ -388,9 +394,8 @@ def test_a_key_builds_the_client_and_the_voice_parser() -> None:
 
 
 def test_cors_headers_are_present_on_api_routes(api: TestClient) -> None:
-    api.post("/api/session/start")
-
-    response = api.get("/api/session/state", headers={"Origin": "http://localhost:3000"})
+    sid = api.post("/api/session/start").json()["session_id"]
+    response = api.get(f"/api/session/{sid}/state", headers={"Origin": "http://localhost:3000"})
 
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
 

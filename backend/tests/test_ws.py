@@ -6,11 +6,18 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
+
+from app.api.ws import WS_UNKNOWN_SESSION
 
 from app.config import Settings
 from app.main import create_app
 from app.models.messages import RoundChangeMessage, RoundChangePayload
 from app.ws.broadcast import ConnectionManager
+
+#: These tests drive the manager directly; any id will do as long as the
+#: connect/broadcast pair agree on it.
+SID = "test-session"
 
 
 def make_settings(**overrides: Any) -> Settings:
@@ -55,10 +62,11 @@ class FakeSocket:
 async def test_broadcast_reaches_every_connected_client() -> None:
     manager = ConnectionManager()
     first, second = FakeSocket(), FakeSocket()
-    await manager.connect(first)  # type: ignore[arg-type]
-    await manager.connect(second)  # type: ignore[arg-type]
+    await manager.connect(SID, first)  # type: ignore[arg-type]
+    await manager.connect(SID, second)  # type: ignore[arg-type]
 
     await manager.broadcast(
+        SID,
         RoundChangeMessage(payload=RoundChangePayload(round=2, total_rounds=6))
     )
 
@@ -69,10 +77,11 @@ async def test_broadcast_reaches_every_connected_client() -> None:
 async def test_a_dead_socket_is_dropped_and_does_not_block_the_others() -> None:
     manager = ConnectionManager()
     healthy, broken = FakeSocket(), FakeSocket(fail=True)
-    await manager.connect(healthy)  # type: ignore[arg-type]
-    await manager.connect(broken)  # type: ignore[arg-type]
+    await manager.connect(SID, healthy)  # type: ignore[arg-type]
+    await manager.connect(SID, broken)  # type: ignore[arg-type]
 
     await manager.broadcast(
+        SID,
         RoundChangeMessage(payload=RoundChangePayload(round=1, total_rounds=6))
     )
 
@@ -84,6 +93,7 @@ async def test_broadcasting_to_nobody_is_harmless() -> None:
     manager = ConnectionManager()
 
     await manager.broadcast(
+        SID,
         RoundChangeMessage(payload=RoundChangePayload(round=1, total_rounds=6))
     )
 
@@ -93,9 +103,9 @@ async def test_broadcasting_to_nobody_is_harmless() -> None:
 async def test_disconnect_removes_the_socket() -> None:
     manager = ConnectionManager()
     socket = FakeSocket()
-    await manager.connect(socket)  # type: ignore[arg-type]
+    await manager.connect(SID, socket)  # type: ignore[arg-type]
 
-    await manager.disconnect(socket)  # type: ignore[arg-type]
+    await manager.disconnect(SID, socket)  # type: ignore[arg-type]
 
     assert manager.connection_count == 0
 
@@ -106,7 +116,9 @@ async def test_disconnect_removes_the_socket() -> None:
 
 
 def test_connecting_sends_a_full_state_frame_immediately(api: TestClient) -> None:
-    with api.websocket_connect("/ws/negotiation") as socket:
+    sid = api.post("/api/session/start").json()["session_id"]
+
+    with api.websocket_connect(f"/ws/negotiation/{sid}") as socket:
         frame = socket.receive_json()
 
     assert frame["type"] == "state"
@@ -121,16 +133,21 @@ def test_connecting_sends_a_full_state_frame_immediately(api: TestClient) -> Non
     }
 
 
-def test_connecting_before_any_session_yields_a_well_formed_empty_state(
+def test_connecting_to_an_unknown_session_is_closed_not_left_hanging(
     api: TestClient,
 ) -> None:
-    """A client that connects first should render a table, not wait forever."""
-    with api.websocket_connect("/ws/negotiation") as socket:
-        payload = socket.receive_json()["payload"]
+    """Replaces the old "empty state" behaviour, deliberately.
 
-    assert payload["round"] == 0
-    assert payload["offer_log"] == []
-    assert payload["pool"] == {"resource": "budget", "total": 100.0}
+    With one global session, connecting before it started meant "it may begin
+    shortly", so an empty state was the useful answer. Session ids removed that
+    reading: an id that does not resolve is expired or wrong and never will
+    resolve, so the socket is closed and the client can say so.
+    """
+    with pytest.raises(WebSocketDisconnect) as caught:
+        with api.websocket_connect("/ws/negotiation/nope") as socket:
+            socket.receive_json()
+
+    assert caught.value.code == WS_UNKNOWN_SESSION
 
 
 def test_connecting_after_a_session_replays_the_current_state(api: TestClient) -> None:
@@ -140,15 +157,15 @@ def test_connecting_after_a_session_replays_the_current_state(api: TestClient) -
     flight while the socket lives on a different portal loop than the request
     that started the session.
     """
-    api.post("/api/session/start")
+    sid = api.post("/api/session/start").json()["session_id"]
     for _ in range(200):
-        state = api.get("/api/session/state").json()
+        state = api.get(f"/api/session/{sid}/state").json()
         if state["revealed_objectives"] is not None:
             break
     else:  # pragma: no cover
         pytest.fail("the mock session never finished")
 
-    with api.websocket_connect("/ws/negotiation") as socket:
+    with api.websocket_connect(f"/ws/negotiation/{sid}") as socket:
         payload = socket.receive_json()["payload"]
 
     assert len(payload["agents"]) == 4
@@ -177,13 +194,13 @@ async def run_game_into_sockets(count: int = 1, **settings_overrides: Any) -> li
     manager = ConnectionManager()
     sockets = [FakeSocket() for _ in range(count)]
     for socket in sockets:
-        await manager.connect(socket)  # type: ignore[arg-type]
+        await manager.connect(SID, socket)  # type: ignore[arg-type]
 
     engine = NegotiationEngine(
         session_id="ws-test",
         agents=[RandomAgent(p.id, seed=i) for i, p in enumerate(PERSONAS)],
         settings=make_settings(**settings_overrides),
-        emit=manager.broadcast,
+        emit=manager.emitter_for(SID),
     )
     await engine.run()
     return sockets
@@ -242,13 +259,13 @@ async def test_an_injected_offer_is_broadcast_to_clients() -> None:
 
     manager = ConnectionManager()
     socket = FakeSocket()
-    await manager.connect(socket)  # type: ignore[arg-type]
+    await manager.connect(SID, socket)  # type: ignore[arg-type]
 
     engine = NegotiationEngine(
         session_id="inject",
         agents=[ScriptedAgent(p.id) for p in PERSONAS],
         settings=make_settings(rounds=1),
-        emit=manager.broadcast,
+        emit=manager.emitter_for(SID),
     )
 
     await engine.inject_offer(
