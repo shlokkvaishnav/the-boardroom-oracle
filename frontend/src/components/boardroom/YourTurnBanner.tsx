@@ -1,4 +1,4 @@
-import { Mic } from "lucide-react";
+import { Check, Mic, X } from "lucide-react";
 import type { Agent, Offer } from "@/lib/negotiation/types";
 
 /**
@@ -13,10 +13,12 @@ export function YourTurnBanner({
   offers,
   agents,
   onSpeak,
+  onRespond,
 }: {
   offers: Offer[];
   agents: Agent[];
   onSpeak: () => void;
+  onRespond: (offerId: string, accepted: boolean) => void;
 }) {
   const human = agents.find((a) => a.isHuman);
   if (!human) return null;
@@ -43,9 +45,27 @@ export function YourTurnBanner({
         put <span className="font-bold tabular-nums">{waiting.amount}</span> {waiting.resource} on
         the table for you — say something back.
       </span>
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={() => onRespond(waiting.offerId, true)}
+          disabled={!waiting.offerId}
+          className="flex items-center gap-1.5 rounded-lg border border-trust-pos px-3 py-1.5 font-mono text-xs font-bold tracking-widest text-trust-pos transition-colors hover:bg-trust-pos hover:text-background disabled:opacity-40"
+        >
+          <Check className="size-3.5" />
+          ACCEPT
+        </button>
+        <button
+          onClick={() => onRespond(waiting.offerId, false)}
+          disabled={!waiting.offerId}
+          className="flex items-center gap-1.5 rounded-lg border border-trust-neg px-3 py-1.5 font-mono text-xs font-bold tracking-widest text-trust-neg transition-colors hover:bg-trust-neg hover:text-background disabled:opacity-40"
+        >
+          <X className="size-3.5" />
+          REJECT
+        </button>
+      </div>
       <button
         onClick={onSpeak}
-        className="ml-auto flex items-center gap-2 rounded-lg border border-agent-4 px-4 py-1.5 font-mono text-xs font-bold tracking-widest text-agent-4 transition-colors hover:bg-agent-4 hover:text-background"
+        className="flex items-center gap-2 rounded-lg border border-agent-4 px-4 py-1.5 font-mono text-xs font-bold tracking-widest text-agent-4 transition-colors hover:bg-agent-4 hover:text-background"
       >
         <Mic className="size-3.5" />
         SPEAK

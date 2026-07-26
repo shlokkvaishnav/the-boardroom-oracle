@@ -129,6 +129,7 @@ def test_connecting_sends_a_full_state_frame_immediately(api: TestClient) -> Non
         "trust_graph",
         "offer_log",
         "agent_thoughts",
+        "holdings",
         "closing_positions",
     }
 

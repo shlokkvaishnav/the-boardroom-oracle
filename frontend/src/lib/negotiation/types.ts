@@ -29,6 +29,8 @@ export interface Offer {
   amount: number;
   accepted: boolean | null;
   timestamp: string;
+  /** Handle for answering this specific offer. */
+  offerId: string;
 }
 
 export interface AgentThought {
@@ -45,6 +47,8 @@ export interface NegotiationState {
   offerLog: Offer[];
   agentThoughts: AgentThought[];
   /** Each party's closing statement on the topic. Null until the end. */
+  /** Current split of the pool, live. */
+  holdings: Record<string, number>;
   closingPositions: Record<string, string> | null;
 }
 
@@ -90,6 +94,8 @@ export interface NegotiationClient {
   injectOffer(payload: InjectOfferPayload): Promise<void>;
   /** Speak into the discussion. Any offer found is a bonus, never required. */
   say(audio: Blob): Promise<VoiceOfferResult>;
+  /** Accept or reject an offer made to you. */
+  respondToOffer(offerId: string, accepted: boolean): Promise<void>;
   sendVoiceOffer(audio: Blob): Promise<VoiceOfferResult>;
   /** Plain speech-to-text, with no offer parsing. Used for the spoken topic. */
   transcribe(audio: Blob): Promise<string>;

@@ -31,6 +31,7 @@ __all__ = [
     "SearchRecord",
     "AgentThought",
     "NegotiationState",
+    "OfferResponseRequest",
     "SessionStartRequest",
     "SessionStartResponse",
     "TranscriptResponse",
@@ -133,6 +134,9 @@ class OfferRecord(ContractModel):
     amount: float
     accepted: bool | None = None
     timestamp: str = Field(default_factory=utc_now_iso)
+    #: Stable handle so a client can answer a specific pending offer. Empty for
+    #: records created before the offer existed in the pending queue.
+    offer_id: str = ""
 
 
 class SearchRecord(ContractModel):
@@ -170,6 +174,9 @@ class NegotiationState(ContractModel):
     trust_graph: TrustGraphView = Field(default_factory=TrustGraphView)
     offer_log: list[OfferRecord] = Field(default_factory=list)
     agent_thoughts: list[AgentThought] = Field(default_factory=list)
+    #: Current split of the pool. The number the whole discussion is about,
+    #: so it belongs on screen while it is still in play.
+    holdings: dict[str, float] = Field(default_factory=dict)
     closing_positions: dict[str, str] | None = None
 
 
@@ -178,6 +185,13 @@ class NegotiationState(ContractModel):
 # --------------------------------------------------------------------------- #
 
 Confidence = Literal["high", "low"]
+
+
+class OfferResponseRequest(ContractModel):
+    """Body for `POST /api/session/{id}/respond` — answering an offer."""
+
+    offer_id: str
+    accepted: bool
 
 
 class SessionStartRequest(ContractModel):

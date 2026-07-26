@@ -13,6 +13,7 @@ const initial: NegotiationState = {
   trustGraph: { nodes: [], edges: [] },
   offerLog: [],
   agentThoughts: [],
+  holdings: {},
   closingPositions: null,
 };
 
@@ -41,6 +42,10 @@ export function useNegotiation() {
   const sendVoiceOffer = useCallback((b: Blob) => client.sendVoiceOffer(b), [client]);
   const transcribe = useCallback((b: Blob) => client.transcribe(b), [client]);
   const say = useCallback((b: Blob) => client.say(b), [client]);
+  const respondToOffer = useCallback(
+    (id: string, accepted: boolean) => client.respondToOffer(id, accepted),
+    [client],
+  );
 
   return {
     state,
@@ -50,6 +55,7 @@ export function useNegotiation() {
     injectOffer,
     sendVoiceOffer,
     say,
+    respondToOffer,
     transcribe,
     isMock: IS_MOCK,
   };

@@ -145,6 +145,7 @@ class NegotiationEngine:
             trust_graph=self.graph.view(),
             offer_log=list(self.offer_log),
             agent_thoughts=list(self.thoughts),
+            holdings=dict(self.holdings),
             closing_positions=self._closing_positions,
         )
 
@@ -364,17 +365,20 @@ class NegotiationEngine:
         if checked is None:
             return []
 
+        self._offer_seq += 1
+        offer_id = f"o{self._offer_seq}"
+
+        # The id goes on the record too, so a client reading the offer log can
+        # answer a specific pending offer without guessing.
         record = OfferRecord(
             round=self.round,
             from_=sender,
             to=receiver,
             resource=resource,
             amount=checked,
+            offer_id=offer_id,
         )
         self.offer_log.append(record)
-
-        self._offer_seq += 1
-        offer_id = f"o{self._offer_seq}"
         self.pending[offer_id] = PendingOffer(
             id=offer_id,
             round=self.round,
@@ -482,6 +486,35 @@ class NegotiationEngine:
     # ------------------------------------------------------------------ #
     # Endgame
     # ------------------------------------------------------------------ #
+
+    async def respond_to_offer(
+        self, *, responder: str, offer_id: str, accepted: bool
+    ) -> NegotiationState:
+        """Accept or reject an offer addressed to `responder`.
+
+        The engine has always been able to do this — `_answer_offer` resolves
+        the transfer and moves the trust edge — but it was only reachable from
+        an agent's own decision, so an offer made *to the human* could never be
+        answered and sat pending forever. This is the door.
+        """
+        async with self._lock:
+            offer = self.pending.get(offer_id)
+            if offer is None:
+                raise OfferRejected(f"no pending offer {offer_id!r}")
+            if offer.to_id != responder:
+                raise OfferRejected("that offer was not addressed to you")
+
+            events = self._answer_offer(
+                responder=responder, offer_id=offer_id, accepted=accepted
+            )
+            state = self.snapshot()
+
+        for event in events:
+            await self._emit(event)
+        logger.info(
+            "%s %s offer %s", responder, "accepted" if accepted else "rejected", offer_id
+        )
+        return state
 
     async def add_remark(self, agent_id: str, text: str) -> AgentThought:
         """Put a human contribution into the discussion.

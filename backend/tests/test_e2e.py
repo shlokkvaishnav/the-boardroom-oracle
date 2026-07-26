@@ -110,6 +110,7 @@ async def test_the_reveal_serializes_to_json_the_frontend_can_consume() -> None:
         "trust_graph",
         "offer_log",
         "agent_thoughts",
+        "holdings",
         "closing_positions",
     }
     for entry in state["offer_log"]:

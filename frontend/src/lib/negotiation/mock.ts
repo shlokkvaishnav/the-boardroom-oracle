@@ -79,6 +79,7 @@ function emptyState(): NegotiationState {
     },
     offerLog: [],
     agentThoughts: [],
+    holdings: {},
     closingPositions: null,
   };
 }
@@ -150,6 +151,7 @@ export class MockNegotiationClient implements NegotiationClient {
       amount: payload.amount,
       accepted: null,
       timestamp: now(),
+      offerId: "",
     };
     this.push(offer);
     this.pushThought("human", THOUGHTS.human[0]);
@@ -164,6 +166,8 @@ export class MockNegotiationClient implements NegotiationClient {
       );
     });
   }
+
+  async respondToOffer(_offerId: string, _accepted: boolean): Promise<void> {}
 
   async say(audio: Blob): Promise<VoiceOfferResult> {
     return this.sendVoiceOffer(audio);
@@ -222,6 +226,7 @@ export class MockNegotiationClient implements NegotiationClient {
             amount,
             accepted: null,
             timestamp: now(),
+            offerId: "",
           };
           this.push(offer);
           this.after(900, () => {

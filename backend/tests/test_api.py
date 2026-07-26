@@ -115,6 +115,7 @@ def test_state_returns_the_contracted_shape_after_start(api: TestClient) -> None
         "trust_graph",
         "offer_log",
         "agent_thoughts",
+        "holdings",
         "closing_positions",
     }
     assert body["pool"] == {"resource": "budget", "total": 100.0}

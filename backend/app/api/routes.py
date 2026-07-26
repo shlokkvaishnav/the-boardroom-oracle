@@ -19,6 +19,7 @@ from app.engine.negotiation import NegotiationEngine, OfferRejected
 from app.models.schemas import (
     NegotiationState,
     OfferSchema,
+    OfferResponseRequest,
     SessionStartRequest,
     SessionStartResponse,
     TranscriptResponse,
@@ -250,6 +251,25 @@ async def reset_session(
         return {"status": "no-session", "session_id": session_id}
     logger.info("session %s reset", session_id)
     return {"status": "reset", "session_id": session_id}
+
+
+@router.post("/{session_id}/respond", response_model=NegotiationState)
+async def respond_to_offer(
+    body: OfferResponseRequest,
+    engine: NegotiationEngine = Depends(require_session),
+) -> NegotiationState:
+    """Accept or reject an offer made to you.
+
+    The engine could always resolve an offer — it just had no door for a human,
+    so an offer addressed to you sat pending forever: no transfer, no movement
+    on the trust graph, and your holdings could only ever go down.
+    """
+    try:
+        return await engine.respond_to_offer(
+            responder=HUMAN_ID, offer_id=body.offer_id, accepted=body.accepted
+        )
+    except OfferRejected as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.post("/{session_id}/say", response_model=VoiceOfferResponse)

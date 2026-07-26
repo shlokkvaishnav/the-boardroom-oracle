@@ -42,6 +42,7 @@ export interface WireOffer {
   amount: number;
   accepted: boolean | null;
   timestamp: string;
+  offer_id?: string;
 }
 
 export interface WireThought {
@@ -57,6 +58,7 @@ export interface WireState {
   trust_graph: { nodes: Array<{ id: string; label: string }>; edges: WireEdge[] };
   offer_log: WireOffer[];
   agent_thoughts: WireThought[];
+  holdings?: Record<string, number>;
   closing_positions: Record<string, string> | null;
 }
 
@@ -105,6 +107,7 @@ export const toOffer = (o: WireOffer): Offer => ({
   amount: o.amount,
   accepted: o.accepted,
   timestamp: o.timestamp,
+  offerId: o.offer_id ?? "",
 });
 
 export const toThought = (t: WireThought): AgentThought => ({
@@ -123,6 +126,7 @@ export const toState = (s: WireState): NegotiationState => ({
   },
   offerLog: s.offer_log.map(toOffer),
   agentThoughts: s.agent_thoughts.map(toThought),
+  holdings: s.holdings ?? {},
   closingPositions: s.closing_positions,
 });
 

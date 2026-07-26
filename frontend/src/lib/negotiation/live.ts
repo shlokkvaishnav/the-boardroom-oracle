@@ -58,6 +58,7 @@ const emptyState = (): NegotiationState => ({
   trustGraph: { nodes: [], edges: [] },
   offerLog: [],
   agentThoughts: [],
+  holdings: {},
   closingPositions: null,
 });
 
@@ -283,6 +284,18 @@ export class LiveNegotiationClient implements NegotiationClient {
       // 400 carries a readable reason (unknown recipient, amount too large…).
       const detail = await res.json().catch(() => null);
       throw new Error(detail?.detail ?? `inject-offer failed (${res.status})`);
+    }
+  }
+
+  async respondToOffer(offerId: string, accepted: boolean): Promise<void> {
+    const res = await this.api(this.scoped("respond"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ offer_id: offerId, accepted }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => null);
+      throw new Error(detail?.detail ?? `respond failed (${res.status})`);
     }
   }
 

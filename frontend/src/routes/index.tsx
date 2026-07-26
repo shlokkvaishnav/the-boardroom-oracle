@@ -29,7 +29,8 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const { state, status, start, reset, injectOffer, say, transcribe } = useNegotiation();
+  const { state, status, start, reset, injectOffer, say, respondToOffer, transcribe } =
+    useNegotiation();
   const [micOpen, setMicOpen] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [started, setStarted] = useState(false);
@@ -94,6 +95,7 @@ function Index() {
         offers={state.offerLog}
         agents={state.agents}
         onSpeak={() => setMicOpen(true)}
+        onRespond={(id, accepted) => void respondToOffer(id, accepted)}
       />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[1fr_minmax(280px,30%)]">
