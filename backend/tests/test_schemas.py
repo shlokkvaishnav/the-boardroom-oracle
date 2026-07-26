@@ -17,8 +17,8 @@ from app.models.messages import (
     GraphUpdateMessage,
     GraphUpdatePayload,
     OfferMessage,
-    RevealMessage,
-    RevealPayload,
+    ClosingMessage,
+    ClosingPayload,
     RoundChangeMessage,
     RoundChangePayload,
     StateMessage,
@@ -152,7 +152,7 @@ def test_negotiation_state_serializes_to_exact_expected_json() -> None:
                 "searched": [],
             }
         ],
-        "revealed_objectives": None,
+        "closing_positions": None,
     }
 
 
@@ -164,12 +164,12 @@ def test_state_has_exactly_the_contracted_top_level_keys() -> None:
         "trust_graph",
         "offer_log",
         "agent_thoughts",
-        "revealed_objectives",
+        "closing_positions",
     }
 
 
-def test_revealed_objectives_is_null_before_the_reveal() -> None:
-    assert _sample_state().wire()["revealed_objectives"] is None
+def test_closing_positions_is_null_before_the_reveal() -> None:
+    assert _sample_state().wire()["closing_positions"] is None
 
 
 def test_agent_info_never_carries_a_hidden_objective_field() -> None:
@@ -284,10 +284,9 @@ def test_every_ws_frame_is_type_plus_payload() -> None:
         ),
         ThoughtMessage(payload=state.agent_thoughts[0]),
         RoundChangeMessage(payload=RoundChangePayload(round=3, total_rounds=6)),
-        RevealMessage(
-            payload=RevealPayload(
-                revealed_objectives={"coop": "keep everyone above 20%"},
-                scores={"coop": 0.75},
+        ClosingMessage(
+            payload=ClosingPayload(
+                positions={"coop": "Rushing this through sets a precedent we'll regret."},
                 holdings={"coop": 30.0},
                 final_state=state,
             )
@@ -300,7 +299,7 @@ def test_every_ws_frame_is_type_plus_payload() -> None:
         "graph_update",
         "thought",
         "round_change",
-        "reveal",
+        "closing",
     ]
     for frame in frames:
         assert set(frame.wire()) == {"type", "payload"}

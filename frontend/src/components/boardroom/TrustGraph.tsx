@@ -183,7 +183,7 @@ export function TrustGraph({
       const cy = h / 2;
       const nodes = [...nodesRef.current.values()];
       const edges = [...edgesRef.current.values()];
-      const revealing = !!stateRef.current.revealedObjectives;
+      const revealing = !!stateRef.current.closingPositions;
       const radius = Math.min(w, h) * 0.32;
 
       // ---- physics

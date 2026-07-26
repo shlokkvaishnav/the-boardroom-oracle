@@ -58,7 +58,7 @@ const emptyState = (): NegotiationState => ({
   trustGraph: { nodes: [], edges: [] },
   offerLog: [],
   agentThoughts: [],
-  revealedObjectives: null,
+  closingPositions: null,
 });
 
 /**
@@ -66,8 +66,8 @@ const emptyState = (): NegotiationState => ({
  *
  * The socket is a *discriminated union* of incremental frames —
  * `{ type: "state" | "offer" | "graph_update" | "thought" | "round_change" |
- * "reveal", payload }` — not a stream of whole states. Only `state` (sent on
- * connect) and the reveal's `final_state` carry a complete snapshot; the rest
+ * "closing", payload }` — not a stream of whole states. Only `state` (sent on
+ * connect) and the closing's `final_state` carry a complete snapshot; the rest
  * are deltas that must be merged. Treating any payload with a `round` field as
  * a full state would silently wipe the board every time an offer landed, since
  * offers and round changes both carry `round`.
@@ -149,16 +149,16 @@ export class LiveNegotiationClient implements NegotiationClient {
         break;
       }
 
-      case "reveal": {
-        // The reveal carries an authoritative final snapshot, so take it whole
-        // rather than merging — it also fills in revealed_objectives.
+      case "closing": {
+        // The closing carries an authoritative final snapshot, so take it
+        // whole rather than merging — it also fills in the final positions.
         const body = payload as unknown as {
           final_state: WireState;
-          revealed_objectives: Record<string, string>;
+          positions: Record<string, string>;
         };
         this.state = {
           ...toState(body.final_state),
-          revealedObjectives: body.revealed_objectives,
+          closingPositions: body.positions,
         };
         break;
       }
@@ -249,7 +249,7 @@ export class LiveNegotiationClient implements NegotiationClient {
     // `/ws/negotiation/{id}` emits a full `state` frame *only on connect*, and
     // every frame after that is a delta (`round_change`, `thought`, `offer`,
     // `graph_update`) — none of which carry `agents`. Without this the board
-    // renders with no agents and no trust-graph nodes until the `reveal` frame
+    // renders with no agents and no trust-graph nodes until the `closing` frame
     // lands at the very end.
     const snapshot = await this.api(this.scoped("state"));
     if (snapshot.ok) {

@@ -1,1 +1,1 @@
-"""Negotiation state machine, trust graph, and scoring. Framework-agnostic."""
+"""Negotiation state machine and trust graph. Framework-agnostic."""

@@ -44,7 +44,8 @@ export interface NegotiationState {
   trustGraph: { nodes: TrustNode[]; edges: TrustEdge[] };
   offerLog: Offer[];
   agentThoughts: AgentThought[];
-  revealedObjectives: Record<string, string> | null;
+  /** Each party's closing statement on the topic. Null until the end. */
+  closingPositions: Record<string, string> | null;
 }
 
 export type ConnectionStatus =

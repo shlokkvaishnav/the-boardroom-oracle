@@ -13,7 +13,7 @@ Shape of a game:
             build a fresh TurnContext  (under the lock)
             await agent.decide(...)    (outside the lock — may be a slow LLM call)
             apply the decision         (under the lock)
-    emit reveal
+    emit closing
 
 Human offers don't take a turn of their own. They land in the pending-offer
 queue the moment they're injected, so the very next agent to act sees the offer
@@ -31,15 +31,14 @@ from app.agents.base import Agent, PendingOffer, TurnContext
 from app.agents.opponent_model import BeliefSet
 from app.agents.personas import PERSONAS, Persona, all_agent_infos
 from app.config import Settings
-from app.engine.scoring import revealed_objectives, score_all
 from app.engine.trust_graph import TrustGraph, favorability
 from app.models.agent_io import AgentDecision
 from app.models.messages import (
     GraphUpdateMessage,
     GraphUpdatePayload,
     OfferMessage,
-    RevealMessage,
-    RevealPayload,
+    ClosingMessage,
+    ClosingPayload,
     RoundChangeMessage,
     RoundChangePayload,
     ThoughtMessage,
@@ -123,9 +122,9 @@ class NegotiationEngine:
         self.thoughts: list[AgentThought] = []
         self.pending: dict[str, PendingOffer] = {}
         self.finished = False
-        self.reveal: RevealPayload | None = None
+        self.closing: ClosingPayload | None = None
 
-        self._revealed: dict[str, str] | None = None
+        self._closing_positions: dict[str, str] | None = None
         self._offer_seq = 0
         #: Provider calls spent in the current round; logged when it ends.
         self._round_llm_calls = 0
@@ -146,7 +145,7 @@ class NegotiationEngine:
             trust_graph=self.graph.view(),
             offer_log=list(self.offer_log),
             agent_thoughts=list(self.thoughts),
-            revealed_objectives=self._revealed,
+            closing_positions=self._closing_positions,
         )
 
     # ------------------------------------------------------------------ #
@@ -487,18 +486,30 @@ class NegotiationEngine:
     async def _finish(self) -> None:
         async with self._lock:
             self.finished = True
-            self._revealed = revealed_objectives(self._personas)
-            self.reveal = RevealPayload(
-                revealed_objectives=self._revealed,
-                scores=score_all(self.holdings, self.pool.total, self._personas),
+            self._closing_positions = self._final_positions()
+            self.closing = ClosingPayload(
+                positions=self._closing_positions,
                 holdings=dict(self.holdings),
-                # Built after `_revealed` is set, so the snapshot carries the
-                # objectives rather than the pre-reveal `null`.
+                # Built after the positions are set, so the snapshot carries
+                # them rather than the mid-discussion `null`.
                 final_state=self.snapshot(),
             )
-            reveal = self.reveal
+            closing = self.closing
 
-        await self._emit(RevealMessage(payload=reveal))
+        await self._emit(ClosingMessage(payload=closing))
+
+    def _final_positions(self) -> dict[str, str]:
+        """Each party's last statement, as their closing argument.
+
+        Taken from the transcript rather than generated fresh: a separate
+        closing call would cost one per agent against a shared rate limit, and
+        a freshly written summary could contradict what they actually spent the
+        discussion saying.
+        """
+        positions: dict[str, str] = {}
+        for remark in self.thoughts:
+            positions[remark.agent_id] = remark.text
+        return positions
 
     # ------------------------------------------------------------------ #
     # Emission

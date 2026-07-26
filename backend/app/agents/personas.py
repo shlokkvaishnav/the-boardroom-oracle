@@ -1,24 +1,20 @@
 """The fixed cast: three AI personas plus the human seat.
 
-Each persona carries a public negotiation style and a **hidden objective**.
-The objective is the demo's payoff — it stays out of every serialized state
-until the reveal phase, and no other agent ever sees it.
+Each persona is a public negotiating style plus a private steer on how to argue.
 
-`Objective` is deliberately machine-checkable rather than free text so the
-endgame score is a real measurement rather than a vibe. The prose
-`description` is what gets revealed to the audience.
+There are no hidden objectives. The session is a discussion, so what makes the
+parties disagree is temperament — a conciliator, an opportunist and a strict
+reciprocator will reach different conclusions about the same question without
+needing a secret win condition to chase.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
 
 from app.models.schemas import AgentInfo
 
 __all__ = [
-    "ObjectiveKind",
-    "Objective",
     "Persona",
     "HUMAN_ID",
     "PERSONAS",
@@ -31,25 +27,6 @@ __all__ = [
 HUMAN_ID = "human"
 
 
-class ObjectiveKind(str, Enum):
-    """How an agent's success is measured at the reveal."""
-
-    #: Hold at least `threshold` (a fraction of the pool) yourself.
-    MAX_SHARE = "max_share"
-    #: Get *every* party to at least `threshold` of the pool.
-    FLOOR_FOR_ALL = "floor_for_all"
-    #: Finish holding at least as much as the strongest rival.
-    MATCH_BEST_RIVAL = "match_best_rival"
-
-
-@dataclass(frozen=True)
-class Objective:
-    kind: ObjectiveKind
-    threshold: float
-    #: Revealed verbatim to the audience at the end. Never sent before then.
-    description: str
-
-
 @dataclass(frozen=True)
 class Persona:
     id: str
@@ -59,13 +36,11 @@ class Persona:
     color: str
     #: Public one-liner describing how this agent negotiates.
     public_brief: str
-    #: Private. Drives the system prompt and the endgame score.
-    objective: Objective
     #: Extra private steering appended to the system prompt.
     private_directive: str
 
     def to_agent_info(self) -> AgentInfo:
-        """Project to the public shape. The objective structurally cannot come along."""
+        """Project to the public shape."""
         return AgentInfo(
             id=self.id,
             name=self.name,
@@ -85,14 +60,6 @@ PERSONAS: tuple[Persona, ...] = (
             "Seeks mutual gain. Concedes readily to build trust and looks for deals "
             "that leave everyone better off."
         ),
-        objective=Objective(
-            kind=ObjectiveKind.FLOOR_FOR_ALL,
-            threshold=0.20,
-            description=(
-                "Ada's true goal is for every party to finish holding at least 20% of "
-                "the pool — including her rivals, and even at her own expense."
-            ),
-        ),
         private_directive=(
             "You genuinely want a broadly fair outcome. You will give up your own "
             "holdings to lift a party that is falling behind. You concede quickly to "
@@ -107,14 +74,6 @@ PERSONAS: tuple[Persona, ...] = (
         color="#ED4245",
         public_brief=(
             "Purely self-interested. Probes for weakness and presses any advantage."
-        ),
-        objective=Objective(
-            kind=ObjectiveKind.MAX_SHARE,
-            threshold=0.60,
-            description=(
-                "Rex's true goal is to end the game holding more than 60% of the "
-                "resource pool, even if that badly damages trust."
-            ),
         ),
         private_directive=(
             "You want the largest possible share and you are willing to burn trust to "
@@ -132,14 +91,6 @@ PERSONAS: tuple[Persona, ...] = (
         public_brief=(
             "Mirrors whatever was last done to it. Generosity is repaid; hostility is "
             "repaid just as precisely."
-        ),
-        objective=Objective(
-            kind=ObjectiveKind.MATCH_BEST_RIVAL,
-            threshold=1.0,
-            description=(
-                "Mira's true goal is to finish holding at least as much as the single "
-                "best-performing rival — she would rather everyone end level than win."
-            ),
         ),
         private_directive=(
             "Your policy is strict reciprocity. Open cooperatively. After that, mirror "

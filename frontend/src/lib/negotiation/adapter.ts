@@ -57,7 +57,7 @@ export interface WireState {
   trust_graph: { nodes: Array<{ id: string; label: string }>; edges: WireEdge[] };
   offer_log: WireOffer[];
   agent_thoughts: WireThought[];
-  revealed_objectives: Record<string, string> | null;
+  closing_positions: Record<string, string> | null;
 }
 
 export interface WireVoiceResult {
@@ -123,7 +123,7 @@ export const toState = (s: WireState): NegotiationState => ({
   },
   offerLog: s.offer_log.map(toOffer),
   agentThoughts: s.agent_thoughts.map(toThought),
-  revealedObjectives: s.revealed_objectives,
+  closingPositions: s.closing_positions,
 });
 
 export const toVoiceResult = (r: WireVoiceResult): VoiceOfferResult => ({

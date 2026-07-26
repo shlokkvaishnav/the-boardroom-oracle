@@ -17,7 +17,7 @@ from app.models.agent_io import AgentDecision, OpponentDelta, ProposedOffer
 from app.models.messages import (
     GraphUpdateMessage,
     OfferMessage,
-    RevealMessage,
+    ClosingMessage,
     RoundChangeMessage,
     ThoughtMessage,
     WSMessage,
@@ -104,7 +104,7 @@ def test_initial_snapshot_is_a_clean_pre_game_state() -> None:
     assert state.round == 0
     assert state.offer_log == []
     assert state.agent_thoughts == []
-    assert state.revealed_objectives is None
+    assert state.closing_positions is None
     assert [agent.id for agent in state.agents] == [COOP, MAXI, TIT, HUMAN_ID]
 
 
@@ -502,31 +502,11 @@ async def test_injecting_after_the_game_ends_is_rejected() -> None:
 async def test_objectives_stay_hidden_until_the_reveal() -> None:
     engine, _, _ = build_engine(rounds=1)
 
-    assert engine.snapshot().revealed_objectives is None
+    assert engine.snapshot().closing_positions is None
 
     await engine.run()
 
-    assert engine.snapshot().revealed_objectives is not None
-
-
-async def test_no_objective_text_leaks_into_pre_reveal_state() -> None:
-    """Belt and braces: scan the serialized state for the secret strings."""
-    from app.agents.personas import PERSONAS
-
-    engine, recorder, _ = build_engine(rounds=1)
-    await engine.inject_offer(
-        OfferSchema(from_=HUMAN_ID, to=MAXI, resource="budget", amount=5.0)
-    )
-
-    serialized = engine.snapshot().model_dump_json(by_alias=True)
-    for persona in PERSONAS:
-        assert persona.objective.description not in serialized
-        assert persona.private_directive not in serialized
-
-    # ...and nothing leaked through the event stream either.
-    stream = "".join(event.model_dump_json(by_alias=True) for event in recorder.events)
-    for persona in PERSONAS:
-        assert persona.objective.description not in stream
+    assert engine.snapshot().closing_positions is not None
 
 
 async def test_reveal_is_emitted_last_and_is_well_formed() -> None:
@@ -534,34 +514,11 @@ async def test_reveal_is_emitted_last_and_is_well_formed() -> None:
 
     await engine.run()
 
-    assert recorder.types[-1] == "reveal"
-    payload = recorder.of_type(RevealMessage)[0].payload
-    assert set(payload.revealed_objectives) == {COOP, MAXI, TIT}
-    assert set(payload.scores) == {COOP, MAXI, TIT}
-    assert all(0.0 <= score <= 1.0 for score in payload.scores.values())
+    assert recorder.types[-1] == "closing"
+    payload = recorder.of_type(ClosingMessage)[0].payload
+    assert set(payload.positions) == {COOP, MAXI, TIT}
     assert payload.holdings == engine.holdings
-    assert payload.final_state.revealed_objectives == payload.revealed_objectives
-
-
-async def test_reveal_scores_reflect_what_actually_happened() -> None:
-    """Rex hoards; his max-share objective should score better than at the start."""
-    engine, _, _ = build_engine(
-        {
-            COOP: [offer(MAXI, 25.0), AgentDecision(action="pass", thought="Given away.")],
-            MAXI: [
-                AgentDecision(action="accept", target_offer_id="o1", thought="All mine."),
-                AgentDecision(action="pass", thought="Sitting on it."),
-            ],
-        },
-        rounds=2,
-    )
-
-    await engine.run()
-
-    assert engine.holdings[MAXI] == 50.0
-    # 50/100 against a 60% target.
-    assert engine.reveal is not None
-    assert engine.reveal.scores[MAXI] == pytest.approx(50 / 100 / 0.60, rel=1e-3)
+    assert payload.final_state.closing_positions == payload.positions
 
 
 async def test_graph_updates_accompany_every_offer_event() -> None:
@@ -619,4 +576,4 @@ async def test_a_broken_listener_does_not_kill_the_negotiation() -> None:
     await engine.run()
 
     assert engine.finished is True
-    assert engine.reveal is not None
+    assert engine.closing is not None

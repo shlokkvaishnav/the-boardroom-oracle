@@ -129,7 +129,7 @@ def test_connecting_sends_a_full_state_frame_immediately(api: TestClient) -> Non
         "trust_graph",
         "offer_log",
         "agent_thoughts",
-        "revealed_objectives",
+        "closing_positions",
     }
 
 
@@ -160,7 +160,7 @@ def test_connecting_after_a_session_replays_the_current_state(api: TestClient) -
     sid = api.post("/api/session/start").json()["session_id"]
     for _ in range(200):
         state = api.get(f"/api/session/{sid}/state").json()
-        if state["revealed_objectives"] is not None:
+        if state["closing_positions"] is not None:
             break
     else:  # pragma: no cover
         pytest.fail("the mock session never finished")
@@ -170,7 +170,7 @@ def test_connecting_after_a_session_replays_the_current_state(api: TestClient) -
 
     assert len(payload["agents"]) == 4
     assert payload["round"] == 2
-    assert payload["revealed_objectives"] is not None
+    assert payload["closing_positions"] is not None
 
 
 # --------------------------------------------------------------------------- #
@@ -218,10 +218,9 @@ async def test_the_live_stream_carries_the_whole_game_through_to_reveal() -> Non
 
     assert seen[0] == "round_change"
     assert "thought" in seen
-    assert seen[-1] == "reveal"
+    assert seen[-1] == "closing"
     assert set(frames(socket)[-1]["payload"]) == {
-        "revealed_objectives",
-        "scores",
+        "positions",
         "holdings",
         "final_state",
     }

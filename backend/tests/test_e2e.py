@@ -76,21 +76,19 @@ async def test_a_full_six_round_game_completes_and_reveals() -> None:
 
     assert engine.finished is True
     assert engine.round == 6
-    assert engine.reveal is not None
-    assert recorder.events[-1].type == "reveal"
+    assert engine.closing is not None
+    assert recorder.events[-1].type == "closing"
 
 
 async def test_the_reveal_payload_is_well_formed() -> None:
     engine, _ = await play_full_game()
-    reveal = engine.reveal
+    reveal = engine.closing
     assert reveal is not None
 
-    assert set(reveal.revealed_objectives) == {COOP, MAXI, TIT}
-    assert set(reveal.scores) == {COOP, MAXI, TIT}
+    assert set(reveal.positions) == {COOP, MAXI, TIT}
     assert set(reveal.holdings) == {COOP, MAXI, TIT, HUMAN_ID}
-    assert all(0.0 <= score <= 1.0 for score in reveal.scores.values())
-    assert all(text.strip() for text in reveal.revealed_objectives.values())
-    assert reveal.final_state.revealed_objectives == reveal.revealed_objectives
+    assert all(text.strip() for text in reveal.positions.values())
+    assert reveal.final_state.closing_positions == reveal.positions
 
 
 async def test_the_reveal_serializes_to_json_the_frontend_can_consume() -> None:
@@ -98,10 +96,9 @@ async def test_the_reveal_serializes_to_json_the_frontend_can_consume() -> None:
 
     frame = json.loads(recorder.events[-1].model_dump_json(by_alias=True))
 
-    assert frame["type"] == "reveal"
+    assert frame["type"] == "closing"
     assert set(frame["payload"]) == {
-        "revealed_objectives",
-        "scores",
+        "positions",
         "holdings",
         "final_state",
     }
@@ -113,7 +110,7 @@ async def test_the_reveal_serializes_to_json_the_frontend_can_consume() -> None:
         "trust_graph",
         "offer_log",
         "agent_thoughts",
-        "revealed_objectives",
+        "closing_positions",
     }
     for entry in state["offer_log"]:
         assert "from" in entry and "from_" not in entry
@@ -181,16 +178,6 @@ async def test_thoughts_are_produced_by_every_agent_every_round() -> None:
     assert {thought.agent_id for thought in engine.thoughts} == {COOP, MAXI, TIT}
 
 
-async def test_no_hidden_objective_appears_before_the_reveal_frame() -> None:
-    _, recorder = await play_full_game()
-
-    secrets = [persona.objective.description for persona in PERSONAS]
-    for event in recorder.events[:-1]:  # everything except the reveal itself
-        blob = event.model_dump_json(by_alias=True)
-        for secret in secrets:
-            assert secret not in blob
-
-
 # --------------------------------------------------------------------------- #
 # The human in the loop
 # --------------------------------------------------------------------------- #
@@ -226,14 +213,6 @@ async def test_a_human_offer_can_be_injected_and_accepted_mid_game() -> None:
     assert engine.graph.weight(MAXI, HUMAN_ID) > 0.5
 
 
-async def test_the_human_can_still_be_scored_out_of_the_pool() -> None:
-    """The human holds resource and affects everyone's objectives."""
-    engine, _ = await play_full_game()
-
-    assert HUMAN_ID in engine.holdings
-    assert HUMAN_ID not in (engine.reveal.scores if engine.reveal else {})
-
-
 # --------------------------------------------------------------------------- #
 # Through the running application
 # --------------------------------------------------------------------------- #
@@ -249,15 +228,15 @@ def test_a_session_played_through_the_api_reaches_a_valid_reveal() -> None:
 
     for _ in range(400):
         body = client.get(f"/api/session/{sid}/state").json()
-        if body["revealed_objectives"] is not None:
+        if body["closing_positions"] is not None:
             break
     else:  # pragma: no cover
         pytest.fail("the session never reached the reveal")
 
     state = NegotiationState.model_validate(body)
     assert state.round == 4
-    assert state.revealed_objectives is not None
-    assert set(state.revealed_objectives) == {COOP, MAXI, TIT}
+    assert state.closing_positions is not None
+    assert set(state.closing_positions) == {COOP, MAXI, TIT}
     assert len(state.agent_thoughts) == 4 * len(PERSONAS)
     assert len(state.trust_graph.edges) == 12
 

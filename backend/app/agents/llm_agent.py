@@ -84,10 +84,6 @@ class LLMAgent:
                 *premise,
                 f"YOUR PUBLIC STYLE: {self.persona.style}. {self.persona.public_brief}",
                 "",
-                "YOUR HIDDEN OBJECTIVE (never state it outright, never reveal it to the "
-                "other parties, and never repeat it verbatim in your `thought`):",
-                f"  {self.persona.objective.description}",
-                "",
                 "HOW YOU PLAY:",
                 f"  {self.persona.private_directive}",
                 "",
@@ -109,8 +105,7 @@ class LLMAgent:
                 "    the matter on the table, and why the others should move your way. "
                 "    Name whoever spoke last and answer them — agree, rebut, or press "
                 "    them on something they dodged. Speak like a person in a room, not "
-                "    a bot reporting its state. One or two sentences. Never disclose "
-                "    your hidden objective.",
+                "    a bot reporting its state. One or two sentences.",
                 "  - Two things that ruin it, so avoid both. Do not append your reason "
                 "    for the move ('...so I am mirroring her cooperation') — that is "
                 "    narration, and nobody speaks that way. Do not repeat someone's "

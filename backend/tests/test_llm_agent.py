@@ -268,18 +268,6 @@ async def test_answering_with_nothing_pending_becomes_a_pass() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_the_system_prompt_carries_only_this_agents_hidden_objective() -> None:
-    agent, _ = make_agent()
-
-    prompt = agent.system_prompt()
-
-    assert persona_by_id("cooperator").objective.description in prompt
-    for other in PERSONAS:
-        if other.id != "cooperator":
-            assert other.objective.description not in prompt
-            assert other.private_directive not in prompt
-
-
 def test_the_system_prompt_is_stable_across_turns() -> None:
     agent, _ = make_agent(persona="maximizer")
 
@@ -320,15 +308,6 @@ def test_the_turn_prompt_includes_holdings_round_and_beliefs() -> None:
     assert "ROUND 2 OF 6" in rendered
     assert "cooperator: 25 budget (25% of the pool)" in rendered
     assert "my_trust" in rendered and "public_trust" in rendered
-
-
-def test_the_turn_prompt_never_mentions_another_agents_objective() -> None:
-    agent, _ = make_agent()
-
-    rendered = agent.render_turn(make_context())
-
-    for persona in PERSONAS:
-        assert persona.objective.description not in rendered
 
 
 def test_build_llm_agents_returns_one_agent_per_persona_in_seating_order() -> None:

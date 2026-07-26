@@ -2,7 +2,7 @@
 
 Every frame is `{"type": ..., "payload": {...}}`, discriminated on `type`.
 
-CONTRACT NOTE — `state` is an addition to the type list in the original spec.
+CONTRACT NOTE â€” `state` is an addition to the type list in the original spec.
 The spec required "on connect, send the current full NegotiationState" but
 listed the union as "e.g. offer | graph_update | thought | round_change |
 reveal", with no variant able to carry a full state snapshot. `state` fills
@@ -29,10 +29,10 @@ __all__ = [
     "GraphUpdateMessage",
     "ThoughtMessage",
     "RoundChangeMessage",
-    "RevealMessage",
+    "ClosingMessage",
     "GraphUpdatePayload",
     "RoundChangePayload",
-    "RevealPayload",
+    "ClosingPayload",
     "WSMessage",
 ]
 
@@ -59,12 +59,16 @@ class RoundChangePayload(ContractModel):
     total_rounds: int
 
 
-class RevealPayload(ContractModel):
-    """The endgame frame: hidden objectives become public and are scored."""
+class ClosingPayload(ContractModel):
+    """The end of the discussion: where each party finished standing.
 
-    revealed_objectives: dict[str, str]
-    # Fraction of each agent's true objective achieved, in [0, 1].
-    scores: dict[str, float]
+    `positions` is each party's last statement on the topic — their closing
+    argument, taken from what they actually said rather than generated
+    separately, so it costs no extra provider call and cannot contradict the
+    transcript above it.
+    """
+
+    positions: dict[str, str]
     holdings: dict[str, float]
     final_state: NegotiationState
 
@@ -99,9 +103,9 @@ class RoundChangeMessage(ContractModel):
     payload: RoundChangePayload
 
 
-class RevealMessage(ContractModel):
-    type: Literal["reveal"] = "reveal"
-    payload: RevealPayload
+class ClosingMessage(ContractModel):
+    type: Literal["closing"] = "closing"
+    payload: ClosingPayload
 
 
 WSMessage = Annotated[
@@ -111,7 +115,7 @@ WSMessage = Annotated[
         GraphUpdateMessage,
         ThoughtMessage,
         RoundChangeMessage,
-        RevealMessage,
+        ClosingMessage,
     ],
     Field(discriminator="type"),
 ]

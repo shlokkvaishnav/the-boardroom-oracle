@@ -13,7 +13,7 @@ const initial: NegotiationState = {
   trustGraph: { nodes: [], edges: [] },
   offerLog: [],
   agentThoughts: [],
-  revealedObjectives: null,
+  closingPositions: null,
 };
 
 export function useNegotiation() {

@@ -6,7 +6,7 @@ import { ThoughtsFeed } from "@/components/boardroom/ThoughtsFeed";
 import { OfferTimeline } from "@/components/boardroom/OfferTimeline";
 import { VoiceModal } from "@/components/boardroom/VoiceModal";
 import { TopicPrompt } from "@/components/boardroom/TopicPrompt";
-import { RevealOverlay } from "@/components/boardroom/RevealOverlay";
+import { ClosingPanel } from "@/components/boardroom/ClosingPanel";
 import { useNegotiation } from "@/hooks/useNegotiation";
 
 const TITLE = "Boardroom Oracle — Live Multi-Agent AI Negotiation Arena";
@@ -46,7 +46,7 @@ function Index() {
   };
 
   // START never opens the floor directly — it always asks what the table is
-  // negotiating over first.
+  // discussing first.
   const handleConfirmTopic = (chosen: string | null) => {
     setTopicOpen(false);
     setTopic(chosen);
@@ -100,19 +100,18 @@ function Index() {
               ON THE TABLE: {topic}
             </div>
           )}
-          {!started && !state.revealedObjectives && (
+          {!started && !state.closingPositions && (
             <div className="pointer-events-none absolute inset-0 grid place-items-center">
               <p className="font-mono text-sm text-muted-foreground">
                 press <span className="text-primary">START</span> to open the floor
               </p>
             </div>
           )}
-          {state.revealedObjectives && (
-            <RevealOverlay
+          {state.closingPositions && (
+            <ClosingPanel
               agents={state.agents}
-              objectives={state.revealedObjectives}
+              positions={state.closingPositions}
               offers={state.offerLog}
-              total={state.pool.total}
               onReset={handleReset}
             />
           )}

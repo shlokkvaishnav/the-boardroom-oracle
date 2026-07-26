@@ -74,8 +74,7 @@ class AgentInfo(ContractModel):
     """A seat at the table — three AI agents plus one human slot.
 
     `persona` is the negotiation style ("Cooperator"); it is public. The hidden
-    objective deliberately has no field here: it must not reach the frontend
-    before the reveal phase.
+    session carries no hidden goals, so there is nothing else to withhold.
     """
 
     id: str
@@ -161,8 +160,8 @@ class AgentThought(ContractModel):
 class NegotiationState(ContractModel):
     """The complete public state of a session.
 
-    `revealed_objectives` stays `None` for the whole game and is populated only
-    at the reveal.
+    `closing_positions` stays `None` until the discussion ends, then carries
+    each party's final position on the topic.
     """
 
     round: int
@@ -171,7 +170,7 @@ class NegotiationState(ContractModel):
     trust_graph: TrustGraphView = Field(default_factory=TrustGraphView)
     offer_log: list[OfferRecord] = Field(default_factory=list)
     agent_thoughts: list[AgentThought] = Field(default_factory=list)
-    revealed_objectives: dict[str, str] | None = None
+    closing_positions: dict[str, str] | None = None
 
 
 # --------------------------------------------------------------------------- #

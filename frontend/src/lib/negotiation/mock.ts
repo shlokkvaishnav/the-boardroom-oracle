@@ -79,7 +79,7 @@ function emptyState(): NegotiationState {
     },
     offerLog: [],
     agentThoughts: [],
-    revealedObjectives: null,
+    closingPositions: null,
   };
 }
 
@@ -233,7 +233,7 @@ export class MockNegotiationClient implements NegotiationClient {
       this.state.agents.forEach((a) => {
         revealed[a.id] = OBJECTIVES[a.id] ?? OBJECTIVES.human;
       });
-      this.state = { ...this.state, revealedObjectives: revealed };
+      this.state = { ...this.state, closingPositions: revealed };
       this.emit();
       this.running = false;
     });
