@@ -89,6 +89,16 @@ class Settings(BaseSettings):
     #: audio. Empty means detect.
     whisper_language: str = "en"
 
+    # --- Groq (hosted Whisper) ---
+    #: With a key, voice goes to Groq's hosted Whisper — far faster and more
+    #: accurate than anything that runs on this CPU. Without one, the local
+    #: model handles it, and the local model also catches any Groq failure.
+    groq_api_key: str | None = None
+    #: `-turbo` is ~2x the throughput of plain large-v3 for a small accuracy
+    #: cost; either is far better than the local `tiny`.
+    groq_whisper_model: str = "whisper-large-v3-turbo"
+    groq_timeout_seconds: float = 20.0
+
     # --- Live web search (agent tool) ---
     #: Without a key the `web_search` tool is never offered to agents and a
     #: session with a `context_topic` still runs — just without live facts.
@@ -106,6 +116,10 @@ class Settings(BaseSettings):
     @property
     def has_gemini_key(self) -> bool:
         return bool(self.gemini_api_key and self.gemini_api_key.strip())
+
+    @property
+    def has_groq_key(self) -> bool:
+        return bool(self.groq_api_key and self.groq_api_key.strip())
 
     @property
     def has_tavily_key(self) -> bool:

@@ -124,12 +124,15 @@ All optional except the API key. Copy `.env.example` to `.env`; it is gitignored
 | `TURN_DELAY_SECONDS` | `2.5` | Pause between turns. Doubles as the demo's pacing dial and as rate-limit headroom. |
 | `POOL_RESOURCE` | `budget` | Name of the contested resource. |
 | `POOL_TOTAL` | `100.0` | Size of the pool, split evenly at the start. |
-| `WHISPER_MODEL` | `base` | faster-whisper size (`tiny`…`large-v3`). |
+| `WHISPER_MODEL` | `tiny` | Local faster-whisper size. Only used without `GROQ_API_KEY`, or as the fallback. |
 | `WHISPER_COMPUTE_TYPE` | `int8` | `int8` is the right choice on CPU. |
-| `WHISPER_PRELOAD` | `false` | Load the model at boot instead of first use. |
+| `WHISPER_PRELOAD` | `true` | Load at boot. Otherwise the first recording pays the whole model load and reads as a broken mic. |
+| `WHISPER_LANGUAGE` | `en` | Pinned to skip auto-detection, which costs a pass over the audio. Blank to detect. |
 | `MAX_CONCURRENT_SESSIONS` | `5` | Live negotiations allowed at once. Raising it does **not** speed anything up — see [Concurrent sessions](#concurrent-sessions). |
 | `SESSION_TTL_SECONDS` | `600` | Idle time before a session is swept. |
 | `SESSION_SWEEP_INTERVAL_SECONDS` | `60` | How often the background sweeper runs. |
+| `GROQ_API_KEY` | *(none)* | Hosted Whisper for voice — ~200x realtime and more accurate than the local model. Without it, local faster-whisper handles voice; it is also the fallback if Groq fails. [console.groq.com/keys](https://console.groq.com/keys) |
+| `GROQ_WHISPER_MODEL` | `whisper-large-v3-turbo` | `-turbo` is ~2x the throughput of `whisper-large-v3` for a small accuracy cost. |
 | `TAVILY_API_KEY` | *(none)* | Enables the agents' `web_search` tool. Without it a `context_topic` session still runs, just without lookups. See [Live web search](#live-web-search). |
 | `TAVILY_MAX_RESULTS` | `3` | Results per search. Every hit is pasted into the follow-up prompt, so this is a prompt-size dial. |
 | `TAVILY_TIMEOUT_SECONDS` | `10.0` | Per-search timeout. A timeout costs the agent a fact, not its turn. |

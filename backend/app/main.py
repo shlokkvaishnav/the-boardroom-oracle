@@ -97,7 +97,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ttl_seconds=settings.session_ttl_seconds,
     )
     app.state.manager = ConnectionManager()
-    app.state.transcriber = WhisperTranscriber(settings)
+    # Groq when there's a key, with the local model behind it as a fallback —
+    # so voice keeps working with no credentials and survives Groq being down.
+    local_transcriber = WhisperTranscriber(settings)
+    if settings.has_groq_key:
+        from app.speech.groq_whisper import FallbackTranscriber, GroqTranscriber
+
+        app.state.transcriber = FallbackTranscriber(
+            GroqTranscriber(settings), local_transcriber
+        )
+        logger.info("voice: Groq %s, local %s as fallback",
+                    settings.groq_whisper_model, settings.whisper_model)
+    else:
+        app.state.transcriber = local_transcriber
     app.state.llm_client = None
     app.state.offer_parser = None
     app.state.search_tool = None
