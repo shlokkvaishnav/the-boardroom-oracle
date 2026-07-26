@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Header } from "@/components/boardroom/Header";
 import { TrustGraph } from "@/components/boardroom/TrustGraph";
+import { KnowledgeGraph } from "@/components/boardroom/KnowledgeGraph";
 import { ThoughtsFeed } from "@/components/boardroom/ThoughtsFeed";
 import { OfferTimeline } from "@/components/boardroom/OfferTimeline";
 import { VoiceModal } from "@/components/boardroom/VoiceModal";
@@ -36,6 +37,9 @@ function Index() {
   const [started, setStarted] = useState(false);
   const [topicOpen, setTopicOpen] = useState(false);
   const [topic, setTopic] = useState<string | null>(null);
+  const [view, setView] = useState<"trust" | "knowledge">("trust");
+
+  const claimCount = state.knowledgeGraph.nodes.filter((n) => n.kind === "claim").length;
 
   const selectedOffer = selected !== null ? state.offerLog[selected] : undefined;
   const highlight = selectedOffer ? { source: selectedOffer.from, target: selectedOffer.to } : null;
@@ -101,10 +105,35 @@ function Index() {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[1fr_minmax(280px,30%)]">
         <section className="panel relative min-h-0 overflow-hidden rounded-lg bg-stage">
-          <div className="pointer-events-none absolute left-4 top-3 z-10 font-display text-xs font-bold tracking-[0.22em] text-muted-foreground">
-            TRUST GRAPH
+          <div className="absolute left-4 top-3 z-10 flex gap-1 font-display text-xs font-bold tracking-[0.22em]">
+            {(["trust", "knowledge"] as const).map((which) => (
+              <button
+                key={which}
+                onClick={() => setView(which)}
+                className={`rounded px-2 py-0.5 transition-colors ${
+                  view === which
+                    ? "bg-primary/15 text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {which === "trust" ? "TRUST" : "ARGUMENT"}
+                {which === "knowledge" && claimCount > 0 && (
+                  <span className="ml-1.5 text-agent-4">{claimCount}</span>
+                )}
+              </button>
+            ))}
           </div>
-          <TrustGraph state={state} highlight={highlight} dimmed={false} />
+          {view === "trust" ? (
+            <TrustGraph state={state} highlight={highlight} dimmed={false} />
+          ) : (
+            <div className="absolute inset-0 pt-11">
+              <KnowledgeGraph
+                nodes={state.knowledgeGraph.nodes}
+                edges={state.knowledgeGraph.edges}
+                agents={state.agents}
+              />
+            </div>
+          )}
           {topic && (
             <div className="pointer-events-none absolute right-4 top-3 z-10 max-w-[45%] truncate font-mono text-xs text-agent-4">
               ON THE TABLE: {topic}

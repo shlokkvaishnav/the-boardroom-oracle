@@ -11,6 +11,8 @@
 import type {
   Agent,
   AgentThought,
+  KnowledgeEdge,
+  KnowledgeNode,
   NegotiationState,
   Offer,
   SearchRecord,
@@ -59,12 +61,30 @@ export interface WireThought {
   searched?: WireSearchRecord[];
 }
 
+export interface WireKnowledgeNode {
+  id: string;
+  kind: KnowledgeNode["kind"];
+  label: string;
+  round: number | null;
+  author_id: string | null;
+  claim_kind: string | null;
+  verdict: KnowledgeNode["verdict"];
+  source_url: string | null;
+}
+
+export interface WireKnowledgeGraph {
+  nodes: WireKnowledgeNode[];
+  edges: KnowledgeEdge[];
+}
+
 export interface WireState {
   round: number;
   total_rounds: number;
   pool: { resource: string; total: number };
   agents: WireAgent[];
   trust_graph: { nodes: Array<{ id: string; label: string }>; edges: WireEdge[] };
+  // Optional so a backend that predates the knowledge graph still parses.
+  knowledge_graph?: WireKnowledgeGraph;
   offer_log: WireOffer[];
   agent_thoughts: WireThought[];
   holdings?: Record<string, number>;
@@ -133,6 +153,17 @@ export const toThought = (t: WireThought): AgentThought => ({
   searched: (t.searched ?? []).map(toSearchRecord),
 });
 
+export const toKnowledgeNode = (n: WireKnowledgeNode): KnowledgeNode => ({
+  id: n.id,
+  kind: n.kind,
+  label: n.label,
+  round: n.round,
+  authorId: n.author_id,
+  claimKind: n.claim_kind,
+  verdict: n.verdict,
+  sourceUrl: n.source_url,
+});
+
 export const toState = (s: WireState): NegotiationState => ({
   round: s.round,
   totalRounds: s.total_rounds,
@@ -141,6 +172,10 @@ export const toState = (s: WireState): NegotiationState => ({
   trustGraph: {
     nodes: s.trust_graph.nodes,
     edges: s.trust_graph.edges.map(toEdge),
+  },
+  knowledgeGraph: {
+    nodes: (s.knowledge_graph?.nodes ?? []).map(toKnowledgeNode),
+    edges: s.knowledge_graph?.edges ?? [],
   },
   offerLog: s.offer_log.map(toOffer),
   agentThoughts: s.agent_thoughts.map(toThought),
@@ -170,6 +205,35 @@ export function mergeOffer(log: Offer[], incoming: Offer): Offer[] {
   const next = log.slice();
   next[index] = incoming;
   return next;
+}
+
+/**
+ * Fold a `knowledge_update` delta in.
+ *
+ * The graph is additive, so this is a pure upsert and never needs to reconcile
+ * a deletion. The one in-place change is a claim re-sent with a filled-in
+ * `verdict`, which upserting on node id handles without a special case.
+ */
+export function mergeKnowledge(
+  current: { nodes: KnowledgeNode[]; edges: KnowledgeEdge[] },
+  incoming: { nodes: KnowledgeNode[]; edges: KnowledgeEdge[] },
+): { nodes: KnowledgeNode[]; edges: KnowledgeEdge[] } {
+  const nodes = current.nodes.slice();
+  for (const node of incoming.nodes) {
+    const index = nodes.findIndex((n) => n.id === node.id);
+    if (index === -1) nodes.push(node);
+    else nodes[index] = node;
+  }
+
+  const edges = current.edges.slice();
+  for (const edge of incoming.edges) {
+    const exists = edges.some(
+      (e) => e.source === edge.source && e.target === edge.target && e.kind === edge.kind,
+    );
+    if (!exists) edges.push(edge);
+  }
+
+  return { nodes, edges };
 }
 
 export function mergeEdges(edges: TrustEdge[], incoming: TrustEdge[]): TrustEdge[] {

@@ -21,6 +21,40 @@ export interface TrustEdge {
   lastOfferAccepted: boolean;
 }
 
+/** What a knowledge-graph node represents. */
+export type KnowledgeNodeKind = "party" | "claim" | "entity" | "evidence";
+
+/**
+ * How two nodes relate.
+ *
+ * `asserts` and `about` come from the speaker; `cites` is stamped by the server
+ * from a search that really ran; `supports`/`contradicts` can only come from a
+ * pass that read the whole round.
+ */
+export type KnowledgeEdgeKind = "asserts" | "about" | "cites" | "supports" | "contradicts";
+
+/** `unchecked` is the honest default — most claims are never checked. */
+export type Verdict = "unchecked" | "supported" | "unsupported" | "contradicted";
+
+export interface KnowledgeNode {
+  id: string;
+  kind: KnowledgeNodeKind;
+  label: string;
+  /** claim only. `party` ids match the trust graph's, so the two share nodes. */
+  round?: number | null;
+  authorId?: string | null;
+  claimKind?: string | null;
+  verdict?: Verdict | null;
+  /** evidence only. */
+  sourceUrl?: string | null;
+}
+
+export interface KnowledgeEdge {
+  source: string;
+  target: string;
+  kind: KnowledgeEdgeKind;
+}
+
 export interface Offer {
   round: number;
   from: string;
@@ -60,6 +94,8 @@ export interface NegotiationState {
   pool: { resource: string; total: number };
   agents: Agent[];
   trustGraph: { nodes: TrustNode[]; edges: TrustEdge[] };
+  /** What was argued, as opposed to who trusts whom. Empty without a topic. */
+  knowledgeGraph: { nodes: KnowledgeNode[]; edges: KnowledgeEdge[] };
   offerLog: Offer[];
   agentThoughts: AgentThought[];
   /** Current split of the pool, live. */

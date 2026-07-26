@@ -67,6 +67,27 @@ const THOUGHTS: Record<string, string[]> = {
   human: ["Live offer injected from the floor.", "The operator is rewriting the board mid-round."],
 };
 
+/**
+ * Scripted claims for the offline run, so the knowledge graph has something to
+ * draw without a backend. All three parties argue about the same two entities,
+ * which is what makes the graph show its point: claims converging on a shared
+ * node rather than three disconnected islands.
+ */
+const CLAIMS: Record<string, Array<{ text: string; kind: string; about: string }>> = {
+  a: [
+    { text: "Copper supply won't recover before 2027.", kind: "fact", about: "copper" },
+    { text: "The smaller supplier absorbs the whole shock.", kind: "value", about: "supply" },
+  ],
+  b: [
+    { text: "Copper prices fall once the new mine opens.", kind: "prediction", about: "copper" },
+    { text: "Whoever moves last on supply pays for it.", kind: "prediction", about: "supply" },
+  ],
+  c: [
+    { text: "Copper output fell 12% year on year.", kind: "fact", about: "copper" },
+    { text: "Supply guarantees are worth more than price cuts.", kind: "value", about: "supply" },
+  ],
+};
+
 const now = () => new Date().toISOString();
 const clamp = (n: number, lo = -1, hi = 1) => Math.max(lo, Math.min(hi, n));
 
@@ -78,6 +99,12 @@ function emptyState(): NegotiationState {
     agents: [...AGENTS],
     trustGraph: {
       nodes: AGENTS.map((a) => ({ id: a.id, label: a.name })),
+      edges: [],
+    },
+    knowledgeGraph: {
+      // Parties are seeded, exactly as the backend seeds them, so the graph has
+      // something to hang claims off from the first round.
+      nodes: AGENTS.map((a) => ({ id: a.id, kind: "party" as const, label: a.name })),
       edges: [],
     },
     offerLog: [],
@@ -220,6 +247,7 @@ export class MockNegotiationClient implements NegotiationClient {
         const at = base + 600 + i * 1900;
         this.after(at, () => {
           this.pushThought(from, THOUGHTS[from][(r - 1) % THOUGHTS[from].length]);
+          this.pushClaim(from, r);
           const amount = this.amountFor(from, r, i);
           const offer: Offer = {
             round: r,
@@ -306,6 +334,46 @@ export class MockNegotiationClient implements NegotiationClient {
         // The offline script never searches, so provenance is always empty.
         { agentId, text, timestamp: now(), searched: [] },
       ],
+    };
+    this.emit();
+  }
+
+  private claimSeq = 0;
+
+  /** Mirrors the backend's rule: a claim node, its author, and what it is about. */
+  private pushClaim(agentId: string, round: number) {
+    const script = CLAIMS[agentId];
+    if (!script) return;
+    const claim = script[(round - 1) % script.length];
+    const claimId = `c${++this.claimSeq}`;
+    const entityId = `e:${claim.about}`;
+    const graph = this.state.knowledgeGraph;
+
+    const nodes = [...graph.nodes];
+    nodes.push({
+      id: claimId,
+      kind: "claim",
+      label: claim.text,
+      round,
+      authorId: agentId,
+      claimKind: claim.kind,
+      verdict: "unchecked",
+    });
+    // Entities merge on their key, exactly as they do server-side.
+    if (!nodes.some((n) => n.id === entityId)) {
+      nodes.push({ id: entityId, kind: "entity", label: claim.about });
+    }
+
+    this.state = {
+      ...this.state,
+      knowledgeGraph: {
+        nodes,
+        edges: [
+          ...graph.edges,
+          { source: agentId, target: claimId, kind: "asserts" },
+          { source: claimId, target: entityId, kind: "about" },
+        ],
+      },
     };
     this.emit();
   }

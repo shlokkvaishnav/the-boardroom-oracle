@@ -1,7 +1,9 @@
 import {
   mergeEdges,
+  mergeKnowledge,
   mergeOffer,
   toEdge,
+  toKnowledgeNode,
   toOffer,
   toState,
   toThought,
@@ -59,6 +61,7 @@ const emptyState = (): NegotiationState => ({
   pool: { resource: "", total: 0 },
   agents: [],
   trustGraph: { nodes: [], edges: [] },
+  knowledgeGraph: { nodes: [], edges: [] },
   offerLog: [],
   agentThoughts: [],
   holdings: {},
@@ -145,6 +148,21 @@ export class LiveNegotiationClient implements NegotiationClient {
           offerLog: mergeOffer(this.state.offerLog, toOffer(payload)),
         };
         break;
+
+      case "knowledge_update": {
+        const body = payload as unknown as {
+          nodes: Parameters<typeof toKnowledgeNode>[0][];
+          edges: NegotiationState["knowledgeGraph"]["edges"];
+        };
+        this.state = {
+          ...this.state,
+          knowledgeGraph: mergeKnowledge(this.state.knowledgeGraph, {
+            nodes: body.nodes.map(toKnowledgeNode),
+            edges: body.edges,
+          }),
+        };
+        break;
+      }
 
       case "graph_update": {
         const incoming = (payload as unknown as { edges: Parameters<typeof toEdge>[0][] }).edges;

@@ -14,9 +14,40 @@ from __future__ import annotations
 import random
 
 from app.agents.base import TurnContext
-from app.models.agent_io import AgentDecision, ProposedOffer
+from app.models.agent_io import AgentDecision, Claim, ProposedOffer
 
-__all__ = ["ScriptedAgent", "RandomAgent"]
+__all__ = ["ScriptedAgent", "RandomAgent", "topic_entities"]
+
+#: Claim shapes for the keyless demo, one per kind so the UI shows all three.
+#:
+#: Content-free on purpose: a mock agent has no opinion, and inventing plausible
+#: prose about the user's real topic would put words in its mouth that read as
+#: analysis. These are obviously scaffolding, and still exercise the graph.
+_CLAIM_TEMPLATES: tuple[tuple[str, str], ...] = (
+    ("{entity} is the constraint everything else follows from.", "value"),
+    ("{entity} has not recovered to where it was.", "fact"),
+    ("{entity} gets worse before it gets better.", "prediction"),
+    ("Whoever moves last on {entity} pays for it.", "prediction"),
+)
+
+#: Words too common to be worth a node of their own.
+_STOPWORDS = frozenset(
+    "the a an of and or to in on for with at by from is are was were be been "
+    "this that these those it its as after before over under new".split()
+)
+
+
+def topic_entities(topic: str | None, limit: int = 3) -> list[str]:
+    """The few words in a topic worth treating as things.
+
+    Crude on purpose — this exists so the keyless demo has *something* to draw,
+    not to do entity recognition. Real extraction is the model's job, and it
+    reports entities itself on every claim.
+    """
+    if not topic:
+        return []
+    words = [w.strip(".,;:!?'\"()") for w in topic.split()]
+    return [w for w in words if len(w) > 3 and w.lower() not in _STOPWORDS][:limit]
 
 
 class ScriptedAgent:
@@ -56,7 +87,24 @@ class RandomAgent:
         self.id = agent_id
         self._rng = random.Random(seed)
 
+    def _claims(self, context: TurnContext) -> list[Claim]:
+        """A scaffolding claim, so a keyless run still fills the knowledge graph.
+
+        Only with a topic set, which is the same condition the real agents claim
+        under. Every agent draws entities from the same topic, so the graph shows
+        its defining behaviour — several parties' claims converging on one shared
+        entity node — rather than three disconnected islands.
+        """
+        entities = topic_entities(context.context_topic)
+        if not entities or self._rng.random() < 0.45:
+            return []
+        template, kind = self._rng.choice(_CLAIM_TEMPLATES)
+        entity = self._rng.choice(entities)
+        return [Claim(text=template.format(entity=entity), kind=kind, entities=[entity])]
+
     async def decide(self, context: TurnContext) -> AgentDecision:
+        claims = self._claims(context)
+
         # Answer the oldest outstanding offer first, so offers don't pile up.
         if context.pending_offers:
             offer = context.pending_offers[0]
@@ -65,16 +113,20 @@ class RandomAgent:
                     action="accept",
                     target_offer_id=offer.id,
                     thought=f"Taking {offer.amount:g} from {offer.from_id}.",
+                    claims=claims,
                 )
             return AgentDecision(
                 action="reject",
                 target_offer_id=offer.id,
                 thought=f"Not enough from {offer.from_id}.",
+                claims=claims,
             )
 
         others = context.other_party_ids
         if not others or context.my_holdings <= 0 or self._rng.random() < 0.25:
-            return AgentDecision(action="pass", thought="Holding position this round.")
+            return AgentDecision(
+                action="pass", thought="Holding position this round.", claims=claims
+            )
 
         target = self._rng.choice(others)
         amount = round(context.my_holdings * self._rng.uniform(0.05, 0.35), 2)
@@ -85,4 +137,5 @@ class RandomAgent:
             action="offer",
             offer=ProposedOffer(to=target, resource=context.pool.resource, amount=amount),
             thought=f"Testing {target} with {amount:g}.",
+            claims=claims,
         )

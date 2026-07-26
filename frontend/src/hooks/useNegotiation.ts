@@ -16,6 +16,7 @@ const initial: NegotiationState = {
   pool: { resource: "", total: 0 },
   agents: [],
   trustGraph: { nodes: [], edges: [] },
+  knowledgeGraph: { nodes: [], edges: [] },
   offerLog: [],
   agentThoughts: [],
   holdings: {},
