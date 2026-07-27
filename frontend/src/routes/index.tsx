@@ -11,7 +11,10 @@ import { YourTurnBanner } from "@/components/boardroom/YourTurnBanner";
 import { ClosingPanel } from "@/components/boardroom/ClosingPanel";
 import { useNegotiation } from "@/hooks/useNegotiation";
 
-const TITLE = "Four Chairs — Watch Three AI Agents Argue It Out";
+// The browser tab gets the name and nothing else — a tab is a label, not a
+// pitch, and the long version truncated to nonsense once a few were open.
+// The social card still gets the full sentence; it has room for it.
+const TITLE = "Four Chairs";
 const DESCRIPTION =
   "Give three AI agents a real-world topic and watch them argue it out live — taking positions, citing sources, rebutting each other, changing their minds. The argument is drawn as a graph while it happens. Pull up a chair and join in with your voice.";
 
@@ -20,7 +23,7 @@ export const Route = createFileRoute("/")({
     meta: [
       { title: TITLE },
       { name: "description", content: DESCRIPTION },
-      { property: "og:title", content: TITLE },
+      { property: "og:title", content: "Four Chairs — Watch Three AI Agents Argue It Out" },
       { property: "og:description", content: DESCRIPTION },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
