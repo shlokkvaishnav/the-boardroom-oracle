@@ -356,15 +356,6 @@ export class LiveNegotiationClient implements NegotiationClient {
     return toVoiceResult((await res.json()) as WireVoiceResult);
   }
 
-  async sendVoiceOffer(audio: Blob): Promise<VoiceOfferResult> {
-    const form = new FormData();
-    // The field name must be `file` — that's what the FastAPI endpoint binds.
-    form.append("file", audio, "offer.webm");
-    const res = await this.api(this.scoped("voice-offer"), { method: "POST", body: form });
-    if (!res.ok) throw new Error(`voice-offer failed (${res.status})`);
-    return toVoiceResult((await res.json()) as WireVoiceResult);
-  }
-
   async transcribe(audio: Blob): Promise<string> {
     const form = new FormData();
     form.append("file", audio, "topic.webm");

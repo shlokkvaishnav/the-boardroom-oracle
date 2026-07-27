@@ -152,8 +152,7 @@ export function VoiceModal({
             <p className="mt-1 font-mono text-xs text-muted-foreground">
               {phase === "recording" && "Recording — say whatever you want to say."}
               {phase === "processing" && "Transcribing…"}
-              {phase === "preview" &&
-                "Said to the table. Everyone will answer it on their next turn."}
+              {phase === "preview" && "Said to the table. Everyone sees it on their next turn."}
               {phase === "error" && error}
             </p>
           </div>
@@ -175,9 +174,12 @@ export function VoiceModal({
               {result.transcript}
               <span className="text-agent-4">”</span>
             </div>
+            {/* An offer inside the remark is a bonus, so it is only ever shown
+                when one was found. Most remarks are not offers, and saying so
+                in red made the ordinary case look like a failure. */}
             {result.offer && (
               <div className="flex flex-wrap items-center gap-3 font-mono text-sm">
-                <span className="text-muted-foreground">PARSED:</span>
+                <span className="text-muted-foreground">ALSO HEARD AN OFFER:</span>
                 <span className="text-agent-4 font-bold">OPERATOR</span>
                 <span className="text-muted-foreground">→</span>
                 <span className="font-bold" style={{ color: target?.color }}>
@@ -192,11 +194,6 @@ export function VoiceModal({
                   </span>
                 )}
               </div>
-            )}
-            {!result.offer && (
-              <p className="font-mono text-xs text-trust-neg">
-                Couldn't turn that into an offer. Close and try again, naming a party and an amount.
-              </p>
             )}
           </div>
         )}
@@ -223,7 +220,7 @@ export function VoiceModal({
               }}
               className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 font-display text-sm font-bold text-primary-foreground transition-transform hover:scale-105"
             >
-              <Send className="size-4" /> INJECT OFFER
+              <Send className="size-4" /> PUT IT ON THE TABLE
             </button>
           )}
         </div>

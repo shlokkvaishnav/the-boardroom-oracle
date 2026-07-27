@@ -90,7 +90,6 @@ def build_agents(request: Request, settings: Settings) -> list:
 
         return build_llm_agents(
             request.app.state.llm_client,
-            settings,
             search=request.app.state.search_tool,
         )
 
@@ -186,59 +185,6 @@ async def inject_offer(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.post("/{session_id}/voice-offer", response_model=VoiceOfferResponse)
-async def voice_offer(
-    request: Request,
-    session_id: str,
-    file: UploadFile = File(...),
-    settings: Settings = Depends(get_settings_dep),
-    store: SessionStore = Depends(get_store),
-    transcriber: Transcriber = Depends(get_transcriber),
-) -> VoiceOfferResponse:
-    """Transcribe speech and parse it into an offer — but do not queue it.
-
-    The frontend shows the transcript and the parsed offer for confirmation,
-    then calls `/inject-offer` if the user agrees. Nothing spoken changes the
-    game state on its own.
-    """
-    audio = await read_audio_upload(file)
-
-    try:
-        transcription = await transcriber.transcribe(audio, file.filename or "audio.webm")
-    except Exception as exc:
-        logger.exception("transcription failed")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"transcription unavailable: {exc}",
-        ) from exc
-
-    # Parse against this session's table when it resolves, otherwise the default
-    # roster — so the preview still works for an expired or unknown id rather
-    # than throwing away audio the user already recorded.
-    engine = await store.get(session_id)
-    parties = engine.snapshot().agents if engine else all_agent_infos()
-    resource = engine.pool.resource if engine else settings.pool_resource
-
-    parsed = None
-    parser = request.app.state.offer_parser
-    if parser is not None and transcription.text.strip():
-        parsed = await parser.parse(
-            transcription.text,
-            parties=parties,
-            resource=resource,
-            speaker_id=HUMAN_ID,
-        )
-
-    # High confidence needs both halves: clear audio *and* a usable offer.
-    confidence = "high" if (parsed is not None and transcription.is_clear) else "low"
-
-    return VoiceOfferResponse(
-        transcript=transcription.text,
-        parsed_offer=parsed,
-        confidence=confidence,
-    )
-
-
 @router.post("/{session_id}/reset")
 async def reset_session(
     session_id: str, store: SessionStore = Depends(get_store)
@@ -289,9 +235,9 @@ async def say_something(
     It costs no round and requires no amount — you can just make a point.
 
     An offer is parsed opportunistically and returned for confirmation *if* the
-    sentence happened to contain one. It is never required, which is the whole
-    difference from `/voice-offer`: demanding "a party and an amount" from
-    someone trying to ask a question is why speaking felt broken.
+    sentence happened to contain one. It is never required. This replaced an
+    earlier endpoint that demanded "a party and an amount" from anyone who
+    opened their mouth, which is why speaking used to feel broken.
     """
     audio = await read_audio_upload(file)
     try:
@@ -339,7 +285,7 @@ async def transcribe_audio(
 
     Deliberately session-free: this is how the opening topic is spoken, which
     happens before any session exists. It parses nothing and changes no state —
-    `/{id}/voice-offer` is the one that turns speech into an offer.
+    `/{id}/say` is the one that puts words in front of the table.
     """
     audio = await read_audio_upload(file)
     try:

@@ -1,4 +1,4 @@
-"""Speech-to-text for the voice-offer endpoint, via faster-whisper.
+"""Speech-to-text for the spoken-remark endpoints, via faster-whisper.
 
 Two things matter operationally:
 

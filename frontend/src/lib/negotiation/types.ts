@@ -33,9 +33,6 @@ export type KnowledgeNodeKind = "party" | "claim" | "entity" | "evidence";
  */
 export type KnowledgeEdgeKind = "asserts" | "about" | "cites" | "supports" | "contradicts";
 
-/** `unchecked` is the honest default — most claims are never checked. */
-export type Verdict = "unchecked" | "supported" | "unsupported" | "contradicted";
-
 export interface KnowledgeNode {
   id: string;
   kind: KnowledgeNodeKind;
@@ -44,7 +41,6 @@ export interface KnowledgeNode {
   round?: number | null;
   authorId?: string | null;
   claimKind?: string | null;
-  verdict?: Verdict | null;
   /** evidence only. */
   sourceUrl?: string | null;
 }
@@ -176,7 +172,6 @@ export interface NegotiationClient {
   say(audio: Blob): Promise<VoiceOfferResult>;
   /** Accept or reject an offer made to you. */
   respondToOffer(offerId: string, accepted: boolean): Promise<void>;
-  sendVoiceOffer(audio: Blob): Promise<VoiceOfferResult>;
   /** Plain speech-to-text, with no offer parsing. Used for the spoken topic. */
   transcribe(audio: Blob): Promise<string>;
 }

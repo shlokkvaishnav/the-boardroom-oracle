@@ -248,11 +248,48 @@ def test_unknown_fields_in_the_body_are_rejected(api: TestClient) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Voice
+# Speaking into the discussion
 # --------------------------------------------------------------------------- #
 
 
-def test_voice_offer_returns_transcript_and_parsed_offer() -> None:
+def _speaking_client(**kwargs: Any) -> tuple[TestClient, str]:
+    """A started session with a transcriber wired in, ready to be spoken to."""
+    app = create_app(make_settings())
+    app.state.transcriber = FakeTranscriber(**kwargs)
+    client = TestClient(app)
+    return client, client.post("/api/session/start").json()["session_id"]
+
+
+def test_saying_something_puts_it_in_the_transcript() -> None:
+    """The ordinary way a person joins in: no amount, no party, just a point."""
+    client, sid = _speaking_client(text="what happens if the mine slips a year?")
+
+    body = client.post(f"/api/session/{sid}/say", files=audio_upload()).json()
+
+    assert set(body) == {"transcript", "parsed_offer", "confidence"}
+    assert body["transcript"] == "what happens if the mine slips a year?"
+
+    thoughts = client.get(f"/api/session/{sid}/state").json()["agent_thoughts"]
+    assert [t["text"] for t in thoughts if t["agent_id"] == HUMAN_ID] == [
+        "what happens if the mine slips a year?"
+    ]
+
+
+def test_a_remark_that_is_not_an_offer_is_still_accepted() -> None:
+    """Parsing is a bonus. A question must not read as a failure."""
+    app = create_app(make_settings())
+    app.state.transcriber = FakeTranscriber(text="who actually absorbs the shock here?")
+    app.state.offer_parser = FakeParser(None)
+    client = TestClient(app)
+    sid = client.post("/api/session/start").json()["session_id"]
+
+    response = client.post(f"/api/session/{sid}/say", files=audio_upload())
+
+    assert response.status_code == 200
+    assert response.json()["parsed_offer"] is None
+
+
+def test_an_offer_inside_a_remark_is_parsed_out_as_a_bonus() -> None:
     app = create_app(make_settings())
     app.state.transcriber = FakeTranscriber()
     app.state.offer_parser = FakeParser(
@@ -260,50 +297,19 @@ def test_voice_offer_returns_transcript_and_parsed_offer() -> None:
     )
     client = TestClient(app)
     sid = client.post("/api/session/start").json()["session_id"]
-    body = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload()).json()
 
-    assert set(body) == {"transcript", "parsed_offer", "confidence"}
-    assert body["transcript"] == "give the maximizer twelve budget"
+    body = client.post(f"/api/session/{sid}/say", files=audio_upload()).json()
+
     assert body["parsed_offer"] == {
         "from": HUMAN_ID,
         "to": MAXI,
         "resource": "budget",
         "amount": 12.0,
     }
-    assert body["confidence"] == "high"
 
 
-def test_voice_offer_is_low_confidence_when_it_cannot_be_parsed() -> None:
-    sid = "no-such-session"
-    app = create_app(make_settings())
-    app.state.transcriber = FakeTranscriber(text="uhh what were we doing")
-    app.state.offer_parser = FakeParser(None)
-    client = TestClient(app)
-
-    body = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload()).json()
-
-    assert body["parsed_offer"] is None
-    assert body["confidence"] == "low"
-
-
-def test_voice_offer_is_low_confidence_when_the_audio_was_unclear() -> None:
-    sid = "no-such-session"
-    """Both halves must hold: a parse off muddy audio is still not trustworthy."""
-    app = create_app(make_settings())
-    app.state.transcriber = FakeTranscriber(avg_logprob=-2.5)
-    app.state.offer_parser = FakeParser(
-        OfferSchema(from_=HUMAN_ID, to=MAXI, resource="budget", amount=12.0)
-    )
-    client = TestClient(app)
-
-    body = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload()).json()
-
-    assert body["parsed_offer"] is not None
-    assert body["confidence"] == "low"
-
-
-def test_voice_offer_does_not_change_game_state() -> None:
-    """Speech only previews; confirmation goes through /inject-offer."""
+def test_speaking_alone_moves_no_resource() -> None:
+    """Saying something is free. Only /inject-offer puts anything on the table."""
     app = create_app(make_settings())
     app.state.transcriber = FakeTranscriber()
     app.state.offer_parser = FakeParser(
@@ -311,71 +317,47 @@ def test_voice_offer_does_not_change_game_state() -> None:
     )
     client = TestClient(app)
     sid = client.post("/api/session/start").json()["session_id"]
-    client.post(f"/api/session/{sid}/voice-offer", files=audio_upload())
-    human_offers = [
-        offer
-        for offer in client.get(f"/api/session/{sid}/state").json()["offer_log"]
-        if offer["from"] == HUMAN_ID
-    ]
 
-    assert human_offers == []
+    client.post(f"/api/session/{sid}/say", files=audio_upload())
+    offers = client.get(f"/api/session/{sid}/state").json()["offer_log"]
+
+    assert [o for o in offers if o["from"] == HUMAN_ID] == []
 
 
-def test_voice_offer_works_before_a_session_is_started() -> None:
-    sid = "no-such-session"
-    app = create_app(make_settings())
-    app.state.transcriber = FakeTranscriber()
-    app.state.offer_parser = FakeParser(
-        OfferSchema(from_=HUMAN_ID, to=MAXI, resource="budget", amount=12.0)
-    )
-    client = TestClient(app)
+def test_unclear_audio_is_flagged_low_confidence() -> None:
+    client, sid = _speaking_client(avg_logprob=-2.5)
 
-    response = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload())
+    body = client.post(f"/api/session/{sid}/say", files=audio_upload()).json()
 
-    assert response.status_code == 200
-    assert response.json()["parsed_offer"] is not None
+    assert body["confidence"] == "low"
 
 
-def test_an_empty_upload_is_400() -> None:
-    sid = "no-such-session"
-    app = create_app(make_settings())
-    app.state.transcriber = FakeTranscriber()
-    client = TestClient(app)
+def test_nothing_transcribed_is_400_rather_than_an_empty_remark() -> None:
+    client, sid = _speaking_client(text="   ")
 
-    response = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload(b""))
+    response = client.post(f"/api/session/{sid}/say", files=audio_upload())
 
     assert response.status_code == 400
 
 
-def test_a_transcription_failure_is_503_not_a_crash() -> None:
-    sid = "no-such-session"
-    app = create_app(make_settings())
-    app.state.transcriber = FakeTranscriber(error=RuntimeError("model unavailable"))
-    client = TestClient(app)
+def test_an_empty_upload_is_400() -> None:
+    client, sid = _speaking_client()
 
-    response = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload())
+    assert client.post(f"/api/session/{sid}/say", files=audio_upload(b"")).status_code == 400
+
+
+def test_a_transcription_failure_is_503_not_a_crash() -> None:
+    client, sid = _speaking_client(error=RuntimeError("model unavailable"))
+
+    response = client.post(f"/api/session/{sid}/say", files=audio_upload())
 
     assert response.status_code == 503
     assert "model unavailable" in response.json()["detail"]
 
 
-def test_voice_offer_with_no_parser_configured_still_returns_the_transcript() -> None:
-    sid = "no-such-session"
-    """No API key means no parser — the transcript is still useful on its own."""
-    app = create_app(make_settings())
-    app.state.transcriber = FakeTranscriber()
-    client = TestClient(app)
-
-    body = client.post(f"/api/session/{sid}/voice-offer", files=audio_upload()).json()
-
-    assert body["transcript"] == "give the maximizer twelve budget"
-    assert body["parsed_offer"] is None
-    assert body["confidence"] == "low"
-
-
 def test_a_missing_file_field_is_422(api: TestClient) -> None:
-    sid = "no-such-session"
-    assert api.post(f"/api/session/{sid}/voice-offer").status_code == 422
+    sid = api.post("/api/session/start").json()["session_id"]
+    assert api.post(f"/api/session/{sid}/say").status_code == 422
 
 
 # --------------------------------------------------------------------------- #

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getNegotiationClient, IS_MOCK } from "@/lib/negotiation/client";
+import { getNegotiationClient } from "@/lib/negotiation/client";
 import type {
   ConnectionStatus,
   InjectOfferPayload,
@@ -49,7 +49,6 @@ export function useNegotiation() {
     void client.reset();
   }, [client]);
   const injectOffer = useCallback((p: InjectOfferPayload) => client.injectOffer(p), [client]);
-  const sendVoiceOffer = useCallback((b: Blob) => client.sendVoiceOffer(b), [client]);
   const transcribe = useCallback((b: Blob) => client.transcribe(b), [client]);
   const say = useCallback((b: Blob) => client.say(b), [client]);
   const respondToOffer = useCallback(
@@ -63,10 +62,8 @@ export function useNegotiation() {
     start,
     reset,
     injectOffer,
-    sendVoiceOffer,
     say,
     respondToOffer,
     transcribe,
-    isMock: IS_MOCK,
   };
 }
