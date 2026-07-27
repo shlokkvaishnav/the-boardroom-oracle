@@ -36,17 +36,24 @@ _CLAIM_TEMPLATES: tuple[tuple[str, str], ...] = (
 #: That is exactly the behaviour the real agents are told to avoid, so the
 #: keyless demo was teaching the opposite of what the app does. These are still
 #: obviously scaffolding; they just point at the topic instead of the ledger.
+#:
+#: Dry rather than neutral, for the same reason: the real agents are told to be
+#: funny, and a keyless demo full of flat declaratives sets the wrong expectation
+#: for anyone seeing the app before they add a key.
 _REMARK_TEMPLATES: tuple[str, ...] = (
-    "The question is {entity}, and nobody here has answered it.",
-    "I keep coming back to {entity}. Everything else follows from that.",
-    "That argument works right up until you get to {entity}.",
-    "You are assuming {entity} holds. What if it doesn't?",
-    "Fine — but that still leaves {entity} on someone's desk.",
+    "The question is {entity}, and we are all doing a heroic job of avoiding it.",
+    "I keep coming back to {entity}. Everything else here is decoration.",
+    "That argument is lovely right up until it meets {entity}.",
+    "You are assuming {entity} holds. Bold.",
+    "Fine — but {entity} is still sitting on someone's desk being ignored.",
 )
 
 #: Said when there is no topic to point at, so the fallback is honest about
 #: having nothing to argue rather than inventing a subject.
-_NO_TOPIC_REMARK = "Nothing has been put on the table worth arguing about yet."
+_NO_TOPIC_REMARK = (
+    "Nothing has been put on the table worth arguing about yet, which is its own "
+    "kind of achievement."
+)
 
 #: Words too common to be worth a node of their own.
 _STOPWORDS = frozenset(
@@ -149,12 +156,23 @@ class RandomAgent:
     def _whisper(self, context: TurnContext) -> Whisper | None:
         """An occasional aside, so a keyless run shows the audience something
         the table cannot see. Rare on purpose: constant whispering is as flat
-        as none at all."""
+        as none at all.
+
+        The subject is somebody other than the listener where there is one —
+        whispering to a party *about that same party* is the one shape a real
+        aside never takes, and the demo used to do it every time.
+        """
         others = context.other_party_ids
         if not others or self._rng.random() < 0.8:
             return None
         target = self._rng.choice(others)
-        return Whisper(to=target, text=f"Between us — I would not trust {target} here.")
+        subject = next((p for p in others if p != target), None)
+        text = (
+            f"Between us — {subject} is making this up very confidently."
+            if subject
+            else "Between us — I have no idea what is going on either."
+        )
+        return Whisper(to=target, text=text)
 
     async def decide(self, context: TurnContext) -> AgentDecision:
         claims = self._claims(context)

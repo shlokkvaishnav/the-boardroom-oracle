@@ -144,7 +144,7 @@ is the enrichment.**
 | File | What it is |
 | --- | --- |
 | `agents/base.py` | The `Agent` protocol and `TurnContext`. The engine sees only this. |
-| `agents/personas.py` | The fixed cast: temperament + private directive. No hidden objectives. |
+| `agents/personas.py` | The fixed cast: temperament, comic register, private directive. No hidden objectives. |
 | `agents/llm_agent.py` | The real thing. One Gemini call per turn, plus an optional search probe. |
 | `agents/mock_agent.py` | `ScriptedAgent` (tests) and `RandomAgent` (keyless demo). |
 | `agents/opponent_model.py` | Each agent's private, subjective read on the others. Never leaves the backend. |

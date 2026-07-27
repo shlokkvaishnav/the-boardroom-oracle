@@ -274,6 +274,55 @@ def test_the_system_prompt_is_stable_across_turns() -> None:
     assert agent.system_prompt() == agent.system_prompt()
 
 
+def test_the_humour_instruction_travels_with_its_guardrails() -> None:
+    """"Be funny" and "aim it at the idea, not the person" are one instruction.
+
+    Pinned together on purpose. Splitting them — or dropping the second half
+    while tightening the first — is exactly how this turns into three agents
+    being unpleasant to each other, and no unit test can catch that by reading
+    the output.
+    """
+    prompt = make_agent()[0].system_prompt()
+
+    assert "BE FUNNY" in prompt
+    assert "Aim it at the idea" in prompt
+    assert "punches down" in prompt
+    assert "identity" in prompt
+    # And the joke must never replace the argument, or the session stops being one.
+    assert "drop the laugh" in prompt
+
+
+def test_the_room_is_framed_as_friends() -> None:
+    """The frame does the work the rules cannot.
+
+    Told only what not to joke about, a model argues like strangers being
+    careful. Told these people like each other, it produces the teasing this
+    is meant to sound like.
+    """
+    assert "like each other" in make_agent()[0].system_prompt()
+
+
+def test_each_persona_carries_its_own_kind_of_funny() -> None:
+    """Three seats handed one shared humour steer all do the same voice.
+
+    So the register is per-persona and the *rules* are shared, not the other
+    way round. If these ever collapse into one line in the system prompt, the
+    table becomes one comedian talking to itself.
+    """
+    directives = {persona.id: persona.private_directive for persona in PERSONAS}
+
+    assert "at yourself" in directives["cooperator"]
+    assert "Deadpan" in directives["maximizer"]
+    assert "straight face" in directives["titfortat"]
+
+
+def test_claims_are_asked_for_straight_even_though_the_talking_is_not() -> None:
+    """The knowledge graph records claims, and a punchline is not checkable."""
+    prompt = make_agent()[0].system_prompt()
+
+    assert "joke stripped out" in prompt
+
+
 def test_the_turn_prompt_shows_pending_offers_with_their_ids() -> None:
     agent, _ = make_agent()
     pending = [
