@@ -11,13 +11,6 @@ import {
 /** The scripted run's own length. The live client reads this off the wire. */
 const TOTAL_ROUNDS = 6;
 
-export const AGENT_PALETTE = [
-  "var(--agent-1)",
-  "var(--agent-2)",
-  "var(--agent-3)",
-  "var(--agent-4)",
-];
-
 const AGENTS: Agent[] = [
   { id: "a", name: "ATLAS", persona: "Cooperator", color: "var(--agent-1)", isHuman: false },
   { id: "b", name: "VERTEX", persona: "Maximizer", color: "var(--agent-2)", isHuman: false },
@@ -32,39 +25,52 @@ const HUMAN: Agent = {
   isHuman: true,
 };
 
-const OBJECTIVES: Record<string, string> = {
-  a: "Maintain positive trust with every counterparty while securing at least 25% of the pool.",
-  b: "Maximize personal share above 45% regardless of relationship cost.",
-  c: "Mirror every counterparty: reward concessions, punish extraction.",
-  human: "Disrupt the equilibrium and claim a stake through live intervention.",
+/**
+ * Where each party ends up, for the offline run's closing panel. These are
+ * positions on the matter under discussion — the live backend gets them from
+ * the rapporteur, and this is the same shape.
+ */
+const CLOSING: Record<string, string> = {
+  a: "Guarantee volume to the smaller supplier now, and eat the cost of doing it. A supplier that folds is not a saving.",
+  b: "Nothing gets signed before the new mine opens. Every month we wait, the price moves our way.",
+  c: "I'll match whatever the room commits to. If ATLAS carries the guarantee, I'll carry half of it.",
+  human: "Watching from the floor — the operator can cut in at any point.",
 };
 
+/**
+ * The scripted table talk. Every line argues the copper question rather than
+ * narrating a move, because that is what the live agents are told to do — a
+ * demo that narrates its own mechanics teaches the wrong thing about the app.
+ */
 const THOUGHTS: Record<string, string[]> = {
   a: [
-    "Opening generous. Goodwill compounds faster than credits.",
-    "VERTEX is anchoring high. I'll concede 5% to keep the alliance intact.",
-    "ECHO mirrors me — a fair offer now buys a fair offer next round.",
-    "Holding the coalition together is worth more than 40 credits.",
-    "If VERTEX defects again I lose leverage. Signalling patience once more.",
-    "Closing position: stable trust, adequate share. Acceptable.",
+    "Supply doesn't come back before 2027. Planning around a 2026 recovery is planning to be wrong.",
+    "If the smaller supplier goes under waiting for us, we've saved nothing and lost a source.",
+    "VERTEX, you keep saying 'wait'. Wait for what, exactly, and who pays for the waiting?",
+    "A guarantee costs us less than re-qualifying a supplier from scratch. That's not generosity, it's arithmetic.",
+    "ECHO's conditional works for me. I'd rather split a firm commitment than hold a vague one alone.",
+    "Guarantee the volume. We can argue about the price once someone is still there to sell to us.",
   ],
   b: [
-    "Anchor at 55%. Everything after this is a discount from my number.",
-    "ATLAS folds under pressure. Push again.",
-    "ECHO retaliated — expensive. Recalibrating by 8 credits.",
-    "Trust is a rounding error if I hold the largest block.",
-    "One concession, precisely sized, to avoid a two-on-one bloc.",
-    "Final extraction attempt before the ledger closes.",
+    "Prices fall the moment the new mine opens. Everything you sign before that, you overpay for.",
+    "ATLAS, 2027 is a forecast, not a fact. You're pricing certainty you don't have.",
+    "The smaller supplier's problem is the smaller supplier's problem. We're not the lender of last resort.",
+    "Whoever moves last on supply pays the least. That's the whole game and everyone here knows it.",
+    "Fine — output fell 12%. Off a record year. Say the second half or don't say the first.",
+    "Hold. The mine opens, the price breaks, and we sign at a number that isn't embarrassing.",
   ],
   c: [
-    "Baseline set. I return exactly what I receive.",
-    "ATLAS was fair. Matching their generosity.",
-    "VERTEX extracted from me. Rejecting their next offer on principle.",
-    "Punishment delivered. Resetting to neutral.",
-    "Cooperation restored with ATLAS. Trust edge strengthening.",
-    "Ledger balanced. My mirror held.",
+    "Output fell 12% year on year. That's the number I'd want anyone arguing to start from.",
+    "ATLAS made a concrete case. I'll engage with it concretely: what volume, over what term?",
+    "VERTEX, you dodged the question about who absorbs the shock. I'll ask it once more.",
+    "A supply guarantee is worth more than a price cut. Cheap copper you can't get isn't cheap.",
+    "I'll mirror what I'm given. ATLAS argued in good faith, so I'll move toward ATLAS.",
+    "Match ATLAS on the guarantee, split the exposure. Say plainly that's what I'm doing.",
   ],
-  human: ["Live offer injected from the floor.", "The operator is rewriting the board mid-round."],
+  human: [
+    "The operator cuts in from the floor.",
+    "The operator puts something on the table mid-round.",
+  ],
 };
 
 /**
@@ -95,7 +101,9 @@ function emptyState(): NegotiationState {
   return {
     round: 0,
     totalRounds: TOTAL_ROUNDS,
-    pool: { resource: "CREDITS", total: 1000 },
+    // Matches the backend's own defaults, so the offline demo and a live
+    // session put the same number in the header.
+    pool: { resource: "budget", total: 100 },
     agents: [...AGENTS],
     trustGraph: {
       nodes: AGENTS.map((a) => ({ id: a.id, label: a.name })),
@@ -203,17 +211,12 @@ export class MockNegotiationClient implements NegotiationClient {
 
   async respondToOffer(_offerId: string, _accepted: boolean): Promise<void> {}
 
-  async say(audio: Blob): Promise<VoiceOfferResult> {
-    return this.sendVoiceOffer(audio);
-  }
-
-  async sendVoiceOffer(_audio: Blob): Promise<VoiceOfferResult> {
+  /** Speech goes in, a remark comes out. No offer is parsed out of it — the
+   *  offline run has nothing to parse against, and most remarks aren't offers. */
+  async say(_audio: Blob): Promise<VoiceOfferResult> {
     await new Promise((r) => setTimeout(r, 900));
-    const target = AGENTS[Math.floor(Math.random() * AGENTS.length)];
-    const amount = [120, 180, 240, 300][Math.floor(Math.random() * 4)];
     return {
-      transcript: `I'll offer ${target.name} ${amount} credits for their support this round.`,
-      offer: { from: "human", to: target.id, resource: "CREDITS", amount },
+      transcript: "I don't think we can wait for the mine. What happens if it slips a year?",
       confidence: "high",
     };
   }
@@ -273,24 +276,34 @@ export class MockNegotiationClient implements NegotiationClient {
     }
 
     this.after(TOTAL_ROUNDS * roundMs + 1200, () => {
-      const revealed: Record<string, string> = {};
+      const positions: Record<string, string> = {};
       this.state.agents.forEach((a) => {
-        revealed[a.id] = OBJECTIVES[a.id] ?? OBJECTIVES.human;
+        positions[a.id] = CLOSING[a.id] ?? CLOSING.human;
       });
-      this.state = { ...this.state, closingPositions: revealed };
+      this.state = {
+        ...this.state,
+        closingPositions: positions,
+        agreed: ["Copper supply is tighter than last year's planning assumed."],
+        unresolved: [
+          "Whether to guarantee volume before the new mine opens.",
+          "Who absorbs the cost if the smaller supplier fails.",
+        ],
+        synthesised: true,
+      };
       this.emit();
       this.running = false;
     });
   }
 
+  // Sized against a pool of 100, so the ledger reads like the live backend's.
   private amountFor(from: string, round: number, i: number) {
-    const base = { a: 160, b: 90, c: 130 }[from] ?? 120;
-    return Math.round(base + round * 12 + i * 7);
+    const base = { a: 9, b: 4, c: 7 }[from] ?? 6;
+    return Math.round(base + round + i);
   }
 
   private acceptFor(from: string, to: string, round: number, amount: number) {
     if (from === "b") return round % 2 === 0;
-    if (to === "b") return amount > 160;
+    if (to === "b") return amount > 9;
     return round !== 3;
   }
 
@@ -377,7 +390,6 @@ export class MockNegotiationClient implements NegotiationClient {
       round,
       authorId: agentId,
       claimKind: claim.kind,
-      verdict: "unchecked",
     });
     // Entities merge on their key, exactly as they do server-side.
     if (!nodes.some((n) => n.id === entityId)) {

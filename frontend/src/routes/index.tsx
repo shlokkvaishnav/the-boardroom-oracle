@@ -11,9 +11,9 @@ import { YourTurnBanner } from "@/components/boardroom/YourTurnBanner";
 import { ClosingPanel } from "@/components/boardroom/ClosingPanel";
 import { useNegotiation } from "@/hooks/useNegotiation";
 
-const TITLE = "Boardroom Oracle — Live Multi-Agent AI Negotiation Arena";
+const TITLE = "Boardroom Oracle — Watch Three AI Agents Argue It Out";
 const DESCRIPTION =
-  "Give three AI agents a real-world topic and watch them argue it out — taking positions, rebutting each other, and trading a shared budget on a living trust graph. Join the table with your voice.";
+  "Give three AI agents a real-world topic and watch them argue it out live — taking positions, citing sources, rebutting each other, changing their minds. The argument is drawn as a graph while it happens. Pull up a chair and join in with your voice.";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -83,13 +83,13 @@ function Index() {
           {status === "at-capacity" ? (
             <>
               <span className="font-bold text-trust-neg">TABLE FULL — </span>
-              every seat is taken by another negotiation right now. Rounds are paced to stay inside
-              a shared rate limit, so this clears on its own. Try START again in a few minutes.
+              every seat is taken by another discussion right now. Rounds are paced to stay inside a
+              shared rate limit, so this clears on its own. Try START again in a few minutes.
             </>
           ) : (
             <>
               <span className="font-bold text-trust-neg">SESSION ENDED — </span>
-              the negotiation this tab was watching has finished or timed out. Press START for a new
+              the discussion this tab was watching has finished or timed out. Press START for a new
               one.
             </>
           )}
@@ -124,7 +124,7 @@ function Index() {
             ))}
           </div>
           {view === "trust" ? (
-            <TrustGraph state={state} highlight={highlight} dimmed={false} />
+            <TrustGraph state={state} highlight={highlight} />
           ) : (
             <div className="absolute inset-0 pt-11">
               <KnowledgeGraph

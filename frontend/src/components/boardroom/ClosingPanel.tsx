@@ -1,7 +1,7 @@
 import type { Agent, AgentThought, Offer } from "@/lib/negotiation/types";
 import { StanceDrift } from "./StanceDrift";
 
-/** Net credits moved, purely as a footnote — the argument is the point. */
+/** Net resource moved, purely as a footnote — the argument is the point. */
 function net(agentId: string, offers: Offer[]) {
   const gained = offers
     .filter((o) => o.to === agentId && o.accepted)
@@ -15,9 +15,10 @@ function net(agentId: string, offers: Offer[]) {
 /**
  * Where everyone finished standing.
  *
- * Replaces the old reveal overlay. There are no hidden objectives to unmask and
- * no score to award, so this shows each party's closing statement — the last
- * thing they actually said — rather than grading them against a secret goal.
+ * Each card is a party's closing position on the matter — from the rapporteur
+ * when it ran, otherwise their last remark. The net-moved footnote appears only
+ * for parties who actually traded; in a discussion where nobody did, printing
+ * "net +0" on every card would be a scoreboard for a game nobody played.
  */
 export function ClosingPanel({
   agents,
@@ -81,10 +82,12 @@ export function ClosingPanel({
               <p className="mt-3 font-mono text-[13px] leading-snug text-foreground/85">
                 “{positions[a.id]}”
               </p>
-              <p className="mt-4 font-mono text-[11px] text-muted-foreground">
-                net {moved >= 0 ? "+" : ""}
-                {moved} {resource} moved
-              </p>
+              {moved !== 0 && (
+                <p className="mt-4 font-mono text-[11px] text-muted-foreground">
+                  net {moved > 0 ? "+" : ""}
+                  {moved} {resource} moved
+                </p>
+              )}
             </article>
           );
         })}

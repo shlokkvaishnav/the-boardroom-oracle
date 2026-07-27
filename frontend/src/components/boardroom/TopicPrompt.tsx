@@ -10,11 +10,11 @@ const SUGGESTIONS = [
 ];
 
 /**
- * Asks what the table is negotiating about, before the floor opens.
+ * Asks what the table will argue about, before the floor opens.
  *
  * The topic is handed identically to every agent as the shared premise, and is
  * what switches their `web_search` tool on — so this is also the moment the
- * negotiation stops being about abstract credits.
+ * session gets something real to be about.
  */
 export function TopicPrompt({
   open,
@@ -118,7 +118,7 @@ export function TopicPrompt({
       className="fixed inset-0 z-50 flex items-center justify-center bg-background/85 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label="Choose a negotiation topic"
+      aria-label="Choose what the table will discuss"
       onKeyDown={(e) => {
         if (e.key === "Escape") onCancel();
       }}
@@ -127,11 +127,12 @@ export function TopicPrompt({
         <div className="flex items-start justify-between">
           <div>
             <h2 className="font-display text-xl font-bold tracking-tight text-glow text-primary">
-              WHAT ARE THEY NEGOTIATING OVER?
+              WHAT ARE THEY ARGUING ABOUT?
             </h2>
             <p className="mt-1 font-mono text-xs text-muted-foreground">
-              Every party gets this same premise. It frames what the resource represents — the rules
-              of the table don&apos;t change.
+              Every party gets this same premise, and it is what they will argue over. Pick
+              something people genuinely disagree about — the sharper the disagreement, the better
+              the session.
             </p>
           </div>
           <button
@@ -155,7 +156,7 @@ export function TopicPrompt({
             disabled={phase !== "idle"}
             placeholder={
               phase === "recording"
-                ? "listening… say what they should negotiate over"
+                ? "listening… say what they should argue about"
                 : phase === "transcribing"
                   ? "transcribing…"
                   : "say it or type it — e.g. the 2026 copper supply squeeze"
@@ -200,8 +201,8 @@ export function TopicPrompt({
           <Search className="mt-0.5 size-3.5 shrink-0 text-agent-4" />
           <span>
             With a topic set, agents may search the live web for a fact to argue with — which costs
-            a second model call per turn, so rounds run slower. Skip it for the faster abstract
-            game.
+            a second model call per turn, so rounds run slower. Skipping is faster, but leaves them
+            with nothing in particular to argue about.
           </span>
         </p>
 

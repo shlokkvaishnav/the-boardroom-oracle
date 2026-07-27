@@ -150,6 +150,43 @@
     font-family: var(--font-mono);
     -webkit-font-smoothing: antialiased;
   }
+
+  /* Scrollbars.
+
+     Left alone, these render as the OS default — a bright white trough down the
+     side of the transcript and the closing panel, which is the loudest thing on
+     a screen that is otherwise near-black. Styled to read as part of the panel:
+     no trough, a thumb the colour of a border, brighter only on hover. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 999px;
+    /* Transparent border + background-clip insets the thumb, so it sits in the
+       gutter rather than filling it edge to edge. */
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--primary) 55%, var(--border));
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
 
 @theme inline {

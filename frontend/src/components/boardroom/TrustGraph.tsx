@@ -51,12 +51,24 @@ function trustColor(w: number) {
 export function TrustGraph({
   state,
   highlight,
-  dimmed,
 }: {
   state: NegotiationState;
   highlight: { source: string; target: string } | null;
-  dimmed: boolean;
 }) {
+  /**
+   * True while every edge is still at its seeded weight.
+   *
+   * The graph only moves on offers, so a discussion where nobody trades leaves
+   * a uniform web sitting there — which reads as "everyone neutrally trusts
+   * everyone" when the truth is "nothing has happened that trust reacts to".
+   * Those are different claims and the canvas alone asserts the wrong one.
+   *
+   * `toSignedWeight` maps the backend's 0..1 onto -1..1, so a seeded 0.5 edge
+   * arrives as exactly 0 and this needs no epsilon.
+   */
+  const untouched =
+    state.trustGraph.edges.length > 0 && state.trustGraph.edges.every((e) => e.weight === 0);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nodesRef = useRef<Map<string, SimNode>>(new Map());
   const edgesRef = useRef<Map<string, SimEdge>>(new Map());
@@ -64,11 +76,9 @@ export function TrustGraph({
   const lastOfferRef = useRef(0);
   const stateRef = useRef(state);
   const highlightRef = useRef(highlight);
-  const dimRef = useRef(dimmed);
 
   stateRef.current = state;
   highlightRef.current = highlight;
-  dimRef.current = dimmed;
 
   // Sync graph model from incoming state (never resets positions).
   useEffect(() => {
@@ -183,14 +193,14 @@ export function TrustGraph({
       const cy = h / 2;
       const nodes = [...nodesRef.current.values()];
       const edges = [...edgesRef.current.values()];
-      const revealing = !!stateRef.current.closingPositions;
+      const closing = !!stateRef.current.closingPositions;
       const radius = Math.min(w, h) * 0.32;
 
       // ---- physics
       nodes.forEach((n, i) => {
         n.appear = Math.min(1, n.appear + 0.05);
         n.pulse *= 0.94;
-        if (revealing) {
+        if (closing) {
           const angle = (i / Math.max(1, nodes.length)) * Math.PI * 2 - Math.PI / 2;
           n.vx += (Math.cos(angle) * radius - n.x) * 0.012;
           n.vy += (Math.sin(angle) * radius - n.y) * 0.012;
@@ -215,7 +225,7 @@ export function TrustGraph({
         e.appear = Math.min(1, e.appear + 0.045);
         e.display += (e.weight - e.display) * 0.06;
         e.flow = Math.max(0, e.flow - 0.008);
-        if (revealing) return;
+        if (closing) return;
         const a = nodesRef.current.get(e.source);
         const b = nodesRef.current.get(e.target);
         if (!a || !b) return;
@@ -269,7 +279,6 @@ export function TrustGraph({
       ctx.restore();
 
       const hl = highlightRef.current;
-      const globalDim = dimRef.current ? 0.25 : 1;
 
       // ---- edges
       ctx.save();
@@ -279,7 +288,7 @@ export function TrustGraph({
         const b = nodesRef.current.get(e.target);
         if (!a || !b) return;
         const isHl = hl && hl.source === e.source && hl.target === e.target;
-        const alpha = (hl && !isHl ? 0.14 : 0.9) * e.appear * globalDim;
+        const alpha = (hl && !isHl ? 0.14 : 0.9) * e.appear;
         const mx = (a.x + b.x) / 2;
         const my = (a.y + b.y) / 2;
         const nx = -(b.y - a.y);
@@ -304,7 +313,7 @@ export function TrustGraph({
           const k = 1 - e.flow;
           const px = (1 - k) * (1 - k) * a.x + 2 * (1 - k) * k * qx + k * k * b.x;
           const py = (1 - k) * (1 - k) * a.y + 2 * (1 - k) * k * qy + k * k * b.y;
-          ctx.globalAlpha = Math.min(1, e.flow * 1.4) * globalDim;
+          ctx.globalAlpha = Math.min(1, e.flow * 1.4);
           ctx.fillStyle = e.accepted ? resolve("var(--trust-pos)") : resolve("var(--trust-neg)");
           ctx.beginPath();
           ctx.arc(px, py, 5, 0, Math.PI * 2);
@@ -317,17 +326,17 @@ export function TrustGraph({
       nodes.forEach((n) => {
         const color = resolve(n.color);
         const r = 30 + n.pulse * 8;
-        ctx.globalAlpha = n.appear * globalDim;
+        ctx.globalAlpha = n.appear;
 
         if (n.pulse > 0.02) {
-          ctx.globalAlpha = n.pulse * 0.35 * globalDim;
+          ctx.globalAlpha = n.pulse * 0.35;
           ctx.fillStyle = color;
           ctx.beginPath();
           ctx.arc(n.x, n.y, r + (1 - n.pulse) * 46, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        ctx.globalAlpha = n.appear * globalDim;
+        ctx.globalAlpha = n.appear;
         ctx.shadowBlur = 30 + n.pulse * 30;
         ctx.shadowColor = color;
         ctx.fillStyle = resolve("var(--stage)");
@@ -359,5 +368,14 @@ export function TrustGraph({
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="h-full w-full" aria-hidden />;
+  return (
+    <>
+      <canvas ref={canvasRef} className="h-full w-full" aria-hidden />
+      {untouched && (
+        <p className="pointer-events-none absolute inset-x-0 bottom-6 text-center font-mono text-xs text-muted-foreground">
+          no trust signals yet — nothing has happened that trust reacts to
+        </p>
+      )}
+    </>
+  );
 }

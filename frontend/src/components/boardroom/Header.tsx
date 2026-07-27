@@ -58,6 +58,7 @@ export function Header({
         <Stat
           label={resource ? `POOL · ${resource.toUpperCase()}` : "POOL"}
           value={total ? total.toLocaleString() : "—"}
+          muted
         />
       </div>
 
@@ -92,11 +93,22 @@ export function Header({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+/**
+ * `muted` marks a number that is context rather than headline. The pool is the
+ * stake anyone can put behind a position, not the subject of the session, so it
+ * should not read as a scoreboard sitting next to the round counter.
+ */
+function Stat({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
     <div className="min-w-0">
       <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">{label}</p>
-      <p className="font-display text-lg font-bold tabular-nums text-foreground lg:text-xl">
+      <p
+        className={
+          muted
+            ? "font-mono text-sm tabular-nums text-muted-foreground"
+            : "font-display text-lg font-bold tabular-nums text-foreground lg:text-xl"
+        }
+      >
         {value}
       </p>
     </div>

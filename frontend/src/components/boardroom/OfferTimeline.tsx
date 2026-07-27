@@ -21,6 +21,11 @@ export function OfferTimeline({
 
   const byId = new Map(agents.map((a) => [a.id, a]));
 
+  // The ledger is secondary to the discussion, so it does not exist until
+  // somebody trades. A permanently empty strip across the bottom of the app
+  // advertises a mechanic most sessions never use.
+  if (offers.length === 0) return null;
+
   return (
     <section className="panel rounded-lg">
       <div className="flex items-center gap-4 px-4 py-2">
@@ -28,11 +33,6 @@ export function OfferTimeline({
           OFFER LEDGER
         </h2>
         <div ref={ref} className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
-          {offers.length === 0 && (
-            <span className="py-3 font-mono text-xs text-muted-foreground">
-              no offers yet — start the negotiation
-            </span>
-          )}
           {offers.map((o, i) => {
             const from = byId.get(o.from);
             const to = byId.get(o.to);

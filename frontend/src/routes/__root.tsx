@@ -76,19 +76,22 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "Boardroom Oracle" },
       {
         name: "description",
-        content: "A live AI negotiation arena visualizing multi-agent deal-making in real-time.",
+        content:
+          "Three AI agents argue a topic you choose, live, while the argument draws itself as a graph.",
       },
       { property: "og:title", content: "Boardroom Oracle" },
       {
         property: "og:description",
-        content: "A live AI negotiation arena visualizing multi-agent deal-making in real-time.",
+        content:
+          "Three AI agents argue a topic you choose, live, while the argument draws itself as a graph.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "Boardroom Oracle" },
       {
         name: "twitter:description",
-        content: "A live AI negotiation arena visualizing multi-agent deal-making in real-time.",
+        content:
+          "Three AI agents argue a topic you choose, live, while the argument draws itself as a graph.",
       },
     ],
     links: [
