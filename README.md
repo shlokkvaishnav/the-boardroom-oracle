@@ -75,21 +75,3 @@ Native setup, every environment variable, and the test commands are in
 **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
 
 ---
-
-## Reading the code
-
-| If you want to know… | Read |
-| --- | --- |
-| How a session actually runs, end to end | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** |
-| How to run, test, and configure it | **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** |
-| The HTTP + WebSocket contract in detail | [docs/BACKEND.md](docs/BACKEND.md) |
-| Conventions and gotchas, for AI coding agents | [CLAUDE.md](CLAUDE.md) |
-
-`backend/` is a FastAPI service — the session engine, the agents, both graphs.
-`frontend/` is a TanStack Start single-page app.
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE).
