@@ -1,9 +1,16 @@
 # Boardroom Oracle — Backend
 
-FastAPI service running a live multi-agent negotiation: three Gemini-backed
-agents with distinct personas and hidden objectives trade a shared resource
-pool over a fixed number of rounds, while a human can inject offers by typing
-or by voice. State streams to the frontend over a WebSocket.
+FastAPI service running a live multi-agent discussion: three Gemini-backed
+agents with distinct temperaments argue a user-supplied topic over a fixed
+number of rounds, while a human takes the fourth seat and can speak into it at
+any point. Two graphs record the session — who trusts whom, and what was
+claimed. State streams to the frontend over a WebSocket.
+
+There are no hidden objectives and no scoring. A shared resource pool exists as
+a stake anyone can put behind a position; it is deliberately not the subject.
+
+For how it all fits together, read [ARCHITECTURE.md](ARCHITECTURE.md).
+This file is the HTTP and WebSocket contract in detail.
 
 ---
 
@@ -25,13 +32,13 @@ Without an API key the service still runs — it falls back to mock agents and
 logs a warning — so the demo is exercisable end to end before any credentials
 exist.
 
-Drive a session:
+Drive a session — the response carries the `session_id` every other route needs:
 
 ```bash
 curl -X POST http://localhost:8000/api/session/start
 ```
 
-Then watch the frames arrive on `ws://localhost:8000/ws/negotiation`.
+Then watch the frames arrive on `ws://localhost:8000/ws/negotiation/{session_id}`.
 
 ---
 
@@ -121,11 +128,14 @@ All optional except the API key. Copy `.env.example` to `.env`; it is gitignored
 | `ENABLE_SCRIBE` | `true` | One call per round with claims in it, linking claims that support or contradict each other. Background task, never in a turn; spends only budget surplus. |
 | `SCRIBE_MODEL` | `gemini-3.5-flash-lite` | Small model for the scribe's extraction work. Blank uses `GEMINI_MODEL`. |
 | `SCRIBE_SETTLE_TIMEOUT_SECONDS` | `10.0` | How long the closing waits for a pass still in flight before cancelling it. |
+| `ENABLE_SYNTHESIS` | `true` | One call at the very end: the rapporteur reads the transcript and reports where the room landed. Off, or unaffordable, falls back to each party's last remark. |
+| `TAVILY_API_KEY` | *(none)* | Enables the agents' `web_search` tool, offered only when a session has a `context_topic`. Without it a topic session still runs — the agents just can't look anything up. |
+| `GROQ_API_KEY` | *(none)* | Hosted Whisper: ~200× realtime and more accurate than local CPU. The local model stays as the fallback whenever Groq errors, so voice never breaks. |
 | `SESSION_CALL_BUDGET` | `60` | Most provider calls one session may spend. `0` is unlimited. Reserves what finishing costs before granting any optional call — see [The call budget](#the-call-budget). |
 | `ALLOWED_ORIGINS` | `localhost:3000,5173,8080` | Comma-separated CORS allowlist. **Add the frontend's deployed URL here.** |
 | `CORS_ALLOW_ALL` | `false` | Dev escape hatch. Also disables credentialed CORS, which the spec forbids alongside a wildcard. |
 | `ENABLE_CHAIR` | `true` | Whoever was just named or challenged answers next, instead of fixed seating order. No provider call; everyone still acts once per round. |
-| `ROUNDS` | `6` | Rounds per game. |
+| `ROUNDS` | `6` | Rounds per session. |
 | `TURN_DELAY_SECONDS` | `2.5` | Pause between turns. Doubles as the demo's pacing dial and as rate-limit headroom. |
 | `POOL_RESOURCE` | `budget` | Name of the contested resource. |
 | `POOL_TOTAL` | `100.0` | Size of the pool, split evenly at the start. |
@@ -146,11 +156,14 @@ All optional except the API key. Copy `.env.example` to `.env`; it is gitignored
 
 ## API
 
-### `POST /api/session/start`
-Initialises a session and starts the round loop in the background. Any previous
-session is stopped first.
+Every session-scoped route carries the id: `/api/session/{session_id}/...`.
+Only `start` and `/api/transcribe` do not.
 
-The body is **optional**. A bare POST starts a plain negotiation:
+### `POST /api/session/start`
+Mints a session id and starts the round loop in the background. Returns
+immediately — the response does not wait for the discussion.
+
+The body is **optional**. A bare POST starts a session with no set topic:
 
 ```json
 { "session_id": "a1b2c3d4e5f6" }
@@ -170,10 +183,11 @@ curl -X POST http://localhost:8000/api/session/start \
 agent's system prompt. Unknown fields are a `422`, not a silent no-op, so a
 `contextTopic` typo fails loudly.
 
-### `GET /api/session/state`
-The full `NegotiationState`. `404` if no session is running.
+### `GET /api/session/{id}/state`
+The full `NegotiationState`. `404` if that id doesn't resolve. The frontend calls
+this once on start to seed the roster before the first socket frame lands.
 
-### `POST /api/session/inject-offer`
+### `POST /api/session/{id}/inject-offer`
 ```json
 { "from": "human", "to": "maximizer", "resource": "budget", "amount": 12.0 }
 ```
@@ -185,55 +199,79 @@ resource, non-positive amount, more than the sender holds). `422` for a
 malformed body — including unknown fields, which are rejected rather than
 silently dropped.
 
-### `POST /api/session/voice-offer`
+### `POST /api/session/{id}/respond`
+```json
+{ "offer_id": "o3", "accepted": true }
+```
+Accept or reject an offer addressed to you. Returns the updated
+`NegotiationState`; `400` if the offer is unknown or not yours to answer.
+
+### `POST /api/session/{id}/say`
 `multipart/form-data` with a `file` field (webm/ogg/wav/mp4, ≤ 25 MB).
+
+**This is the ordinary way a person joins in.** Whatever you say lands in the
+transcript and every agent sees it on their next turn, so they answer you. It
+costs no round and requires no particular form — a question is fine.
 
 ```json
 {
-  "transcript": "give the maximizer twelve budget",
-  "parsed_offer": { "from": "human", "to": "maximizer", "resource": "budget", "amount": 12.0 },
+  "transcript": "what happens if the mine slips a year?",
+  "parsed_offer": null,
   "confidence": "high"
 }
 ```
 
-**This endpoint changes no game state.** It previews only; the frontend shows
-the transcript and parsed offer for confirmation and then calls
-`/inject-offer`. `parsed_offer` is `null` when the speech couldn't be resolved
-into a valid offer. `confidence` is `high` only when the audio was clear **and**
-the parse succeeded — either one failing yields `low`.
+`parsed_offer` is **opportunistic**: if the sentence happened to contain a clear
+offer, it comes back for confirmation, and the frontend can then call
+`/inject-offer`. Most remarks are not offers, so `null` is the normal answer and
+not an error. Saying something never moves resource on its own.
 
-`503` if transcription is unavailable, `400` on an empty upload, `413` if oversized.
+`400` if nothing was transcribed, `503` if transcription is unavailable, `413`
+if oversized.
 
-### `POST /api/session/reset`
-Tears the session down and stops its background loop. Safe to call when nothing
-is running (`{"status": "no-session"}`).
+### `POST /api/transcribe`
+Speech to text and nothing else, deliberately session-free — this is how the
+opening topic is spoken, before any session exists.
+
+### `POST /api/session/{id}/reset`
+Tears the session down and stops its background loop. Scoped to the id:
+resetting your own session must not stop anyone else's. Safe to call for an id
+that is already gone (`{"status": "no-session"}`).
 
 ---
 
-## WebSocket — `/ws/negotiation`
+## WebSocket — `/ws/negotiation/{session_id}`
 
 On connect the client receives **one `state` frame** with the full
-`NegotiationState`, then incremental frames as the game proceeds. If no session
-is running, the `state` frame is a well-formed empty state rather than nothing.
+`NegotiationState`, then incremental frames as the session proceeds. An id that
+doesn't resolve is accepted and then closed with `1008`.
 
-Every frame is `{"type": ..., "payload": {...}}`:
+Every frame is `{"type": ..., "payload": {...}}`. Eight types:
 
 | `type` | `payload` | Emitted when |
 | --- | --- | --- |
-| `state` | `NegotiationState` | On connect, and after a reset. |
+| `state` | `NegotiationState` | On connect. The only full snapshot mid-session. |
 | `round_change` | `{round, total_rounds}` | At the start of each round. |
-| `thought` | `{agent_id, text, timestamp, searched}` | Every turn, before the action. |
-| `offer` | `OfferRecord` | An offer is made, and again when answered (with `accepted` stamped). |
-| `graph_update` | `{edges: [...], reason}` | After every offer event. `reason` is `offer_made`, `offer_accepted` or `offer_rejected`. |
-| `reveal` | `{revealed_objectives, scores, holdings, final_state}` | Once, at the end. |
+| `thought` | `AgentThought` — `{agent_id, text, round, stance, timestamp, searched}` | Every turn, and every human remark. |
+| `whisper` | `WhisperRecord` | An agent says something to exactly one party. |
+| `knowledge_update` | `{nodes, edges, reason}` | A claim is made (`claim_made`), or the scribe links claims (`scribe`). |
+| `offer` | `OfferRecord` | An offer is made, and again when answered with `accepted` stamped. |
+| `graph_update` | `{edges, reason}` | Alongside every `offer` frame. `reason` is `offer_made`, `offer_accepted` or `offer_rejected`. |
+| `closing` | `ClosingPayload` — `{positions, agreed, unresolved, synthesised, final_state}` | Once, at the end. |
 
-> **`state` is an addition to the type list in the original spec.** The spec
-> required sending a full `NegotiationState` on connect but listed no variant
-> able to carry one (its list was prefixed "e.g."). Everything else matches the
-> spec exactly.
+Only `state` and `closing` carry a full snapshot; everything else is a delta the
+client merges. `graph_update` never carries nodes — the roster comes from
+`state`. `knowledge_update` is purely additive, so it merges by upsert and never
+needs to reconcile a deletion.
+
+`synthesised` on the closing frame distinguishes "the rapporteur produced a
+report" from "it couldn't run". Without it, a room that genuinely agreed on
+nothing would be indistinguishable from a failed summary — both have an empty
+`agreed`.
 
 The socket is push-only; the server ignores anything the client sends and uses
-it solely to detect disconnects.
+it solely to detect disconnects. **A reset emits no frame** — the socket simply
+closes with the session.
 
 ---
 
@@ -271,7 +309,7 @@ key and multiply the 429 rate by N. The code says so at the point where someone
 would be tempted to change it, and `tests/test_sessions.py` pins the behaviour:
 six calls fired as if from two sessions still show `max_concurrent == 1`.
 
-The visible consequence, for a 6-round game:
+The visible consequence, for a 6-round session:
 
 | Live sessions | Plain | With `context_topic` |
 | --- | --- | --- |
@@ -285,13 +323,13 @@ one.
 
 ### Capacity
 
-`MAX_CONCURRENT_SESSIONS` (default 5) bounds live games. Beyond it,
+`MAX_CONCURRENT_SESSIONS` (default 5) bounds live sessions. Beyond it,
 `/api/session/start` returns **503** with a `Retry-After` header and a readable
 message; the frontend shows a "table full" banner rather than an error.
 
 503 rather than 429 on purpose: nothing about the caller is being rate-limited,
-the box is simply full. Only *unfinished* sessions count — a finished game makes
-no provider calls, so holding the next player out on its account would achieve
+the box is simply full. Only *unfinished* sessions count — a finished session makes
+no provider calls, so holding the next person out on its account would achieve
 nothing.
 
 ### Expiry
@@ -303,7 +341,7 @@ checking capacity, so nobody is refused on account of sessions that already aged
 out. Any REST read counts as activity, so a session being watched never expires
 under its viewer.
 
-The frontend keeps its id in `sessionStorage`, so a refresh rejoins the game in
+The frontend keeps its id in `sessionStorage`, so a refresh rejoins the session in
 progress; if the id no longer resolves it shows a "session ended" state instead
 of a dead board.
 
@@ -313,7 +351,7 @@ of a dead board.
 
 Agents can look things up mid-negotiation. It is off unless you ask for it: the
 tool is offered only when a session is started with a `context_topic`, so an
-ordinary game is byte-for-byte what it was before the feature existed.
+ordinary session is byte-for-byte what it was before the feature existed.
 
 The two halves work together. `context_topic` sets the premise — "you are
 negotiating resource allocation in the context of: the 2026 copper supply
@@ -373,9 +411,9 @@ Provider calls, for the default three agents over six rounds:
 | No `context_topic` | 18 | 72s | ~9 |
 | `context_topic` set | 36 | 144s | 15 |
 
-**A search-enabled game sits on the free tier's ~15 RPM ceiling with no
+**A search-enabled session sits on the free tier's ~15 RPM ceiling with no
 headroom.** Raise `LLM_MIN_INTERVAL_SECONDS` to 5.0 for these sessions — it
-costs ~30s of runtime and buys margin. Expect a search-enabled six-round game to
+costs ~30s of runtime and buys margin. Expect a search-enabled six-round session to
 take 3–4 minutes rather than ~2.
 
 Each round logs what it actually spent, which is the number to watch in
@@ -443,7 +481,7 @@ confusing half-working state.
 | Backend sends | Frontend uses | Handled by |
 | --- | --- | --- |
 | `is_human`, `agent_id`, `last_offer_accepted` | `isHuman`, `agentId`, `lastOfferAccepted` | `toAgent` / `toThought` / `toEdge` |
-| `trust_graph`, `offer_log`, `agent_thoughts`, `revealed_objectives` | `trustGraph`, `offerLog`, `agentThoughts`, `revealedObjectives` | `toState` |
+| `trust_graph`, `knowledge_graph`, `offer_log`, `agent_thoughts`, `closing_positions` | `trustGraph`, `knowledgeGraph`, `offerLog`, `agentThoughts`, `closingPositions` | `toState` |
 | `weight` in `0..1`, **0.5 neutral** | `weight` in `-1..1`, **0 neutral** | `toSignedWeight` (`w * 2 - 1`) |
 | `last_offer_accepted: bool \| null` | `lastOfferAccepted: boolean` | `=== true` |
 | `{transcript, parsed_offer, confidence}` | `{transcript, offer, confidence}` | `toVoiceResult` |
@@ -454,9 +492,9 @@ API — worth knowing about, since each was a silent failure rather than an erro
 1. **Frames are deltas, not snapshots.** It treated any payload with a `round`
    field as a whole `NegotiationState`. Both `offer` and `round_change` payloads
    carry `round`, so every offer wiped the board. It now switches on `type` and
-   merges incrementally; only `state` and the reveal's `final_state` replace.
+   merges incrementally; only `state` and the closing's `final_state` replace.
 2. **`reset()` posted to `/api/session/start`** with `{reset: true}` — which
-   starts a *new* negotiation. Now uses `/api/session/reset`.
+   starts a *new* session. Now uses `/api/session/{id}/reset`.
 3. **Voice upload used the field name `audio`**; FastAPI binds `file`, so every
    upload was a 422.
 4. **It read `result.offer`**, but the endpoint returns `parsed_offer`, so the
@@ -464,10 +502,11 @@ API — worth knowing about, since each was a silent failure rather than an erro
 5. **Errors were swallowed** — a 400 from `inject-offer` (which carries a
    readable reason) looked like success.
 
-**Not yet surfaced:** the `reveal` frame carries real `scores` — each agent's
-measured objective achievement in `0..1`. `RevealOverlay` currently derives its
-own percentage from net accepted credits instead. Wiring `scores` through would
-make the endgame numbers real rather than a proxy.
+**Trust weights are the one rescale that matters.** `toSignedWeight` is the only
+place `0..1` becomes `-1..1`, which has a useful side effect: an edge nobody has
+touched arrives as exactly `0`, so the UI can detect a graph that has not moved
+without needing an epsilon. `TrustGraph.tsx` uses precisely that to show "no
+trust signals yet" instead of a neutral web that looks like a verdict.
 
 ---
 
@@ -508,7 +547,7 @@ averages (`updated = 0.6 × previous + 0.4 × observation`):
 `ALPHA = 0.4` means a belief moves ~40% toward each new observation, so agents
 adapt within two or three rounds — fast enough to see in six.
 
-Note the split: the **graph** is the objective public record drawn in the UI;
+Note the split: the **graph** is the shared public record drawn in the UI;
 `trust_score` is the agent's subjective read. The gap between them is usually
 the most interesting thing on screen, and both are shown in the agent's prompt.
 
@@ -535,7 +574,7 @@ Two things worth knowing before editing tests:
   socket, and broadcasting to it deadlocks. The direct path covers the same
   wiring deterministically.
 - **API tests use a long `TURN_DELAY_SECONDS`.** At zero delay, mock agents
-  finish an entire game between two HTTP calls, and the engine then correctly
+  finish an entire session between two HTTP calls, and the engine then correctly
   refuses to inject into a finished session.
 
 ---
@@ -548,25 +587,29 @@ app/
   config.py           pydantic-settings
   llm_client.py       THE ONLY MODULE THAT TALKS TO A PROVIDER (pacing, backoff)
   api/routes.py       REST endpoints
-  api/ws.py           /ws/negotiation
+  api/ws.py           /ws/negotiation/{session_id}
   models/schemas.py   the frontend wire contract
-  models/messages.py  WS discriminated union
+  models/messages.py  WS discriminated union — eight frame types
   models/agent_io.py  AgentDecision — what an agent turn must return
-  agents/personas.py  the cast, styles, and hidden objectives
+  agents/personas.py  the cast: temperament + private steer on how to argue
   agents/base.py      Agent protocol + TurnContext — the swap point
   agents/llm_agent.py Gemini-backed agent, retry then safe default
   agents/mock_agent.py scripted + seeded-random doubles
-  agents/opponent_model.py belief state
+  agents/opponent_model.py private belief state, never sent to the frontend
+  agents/scribe.py    per-round observer — links claims that relate
+  agents/rapporteur.py end-of-session observer — where the room landed
   engine/negotiation.py the state machine
   engine/trust_graph.py networkx wrapper + update rule
-  engine/scoring.py   endgame objective scoring
+  engine/knowledge_graph.py networkx wrapper — what was argued
+  engine/chair.py     who speaks next, as a rule rather than a model
+  engine/budget.py    provider-call accounting
   session/store.py    SessionStore protocol + in-memory impl
   ws/broadcast.py     connection manager
-  speech/             Whisper + transcript→offer parsing
+  speech/             Whisper + opportunistic transcript→offer parsing
 ```
 
 `engine/` imports nothing from FastAPI. Session state is reached only through
-`SessionStore`, so swapping in Redis or Postgres touches no game logic.
+`SessionStore`, so swapping in Redis or Postgres touches no session logic.
 
 ---
 
@@ -574,7 +617,7 @@ app/
 
 - **One concurrent session**, as specified. The store is keyed for more, but
   `start` replaces rather than multiplexes.
-- **State is in memory** — a restart loses the game.
+- **State is in memory** — a restart loses the session.
 - Offers left unanswered when the last round ends stay `accepted: null`.
 - `starlette` warns that `TestClient` prefers `httpx2` over `httpx`. Harmless
   today; when it hard-breaks, swap the dev dependency.

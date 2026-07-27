@@ -1,118 +1,110 @@
 # Boardroom Oracle
 
-A live multi-agent AI negotiation demo. Three LLM agents with distinct personas
-and hidden objectives negotiate over a shared resource pool across a fixed
-number of rounds. A human can join the table at any point by injecting a typed
-offer or speaking one aloud. At the end, every hidden objective is revealed and
-scored.
+**Give three AI agents a topic people actually disagree about, and watch them
+argue it out — live, while the argument draws itself as a graph.**
 
-## Monorepo layout
+<!-- ![The boardroom, mid-session](docs/images/hero.png) -->
 
-| Path        | What it is                                                                  |
-| ----------- | --------------------------------------------------------------------------- |
-| `backend/`  | FastAPI service: negotiation engine, Gemini agents, trust graph, WebSocket.  |
-| `frontend/` | TanStack Start single-page arena: force-directed trust graph, thought feed, offer ledger, voice capture. |
+Ada, Rex and Mira sit at a four-seat table. You take the fourth seat. Each has a
+temperament rather than a script — a conciliator, an opportunist, and a strict
+reciprocator — so they reach different conclusions about the same question
+without anyone handing them a position to defend.
 
-## Running the whole thing
+They argue for six rounds. They cite live web sources. They change their minds,
+or conspicuously don't. And you can cut in at any point with your voice.
 
-Both halves are containerised, so this is the only command the demo needs:
+---
+
+## What you're looking at
+
+<!-- ![Trust graph and argument graph side by side](docs/images/graphs.png) -->
+
+**The stage** shows one of two graphs, toggled live:
+
+- **TRUST** — who trusts whom, as a force-directed web. Directed edges, so Ada
+  trusting Rex is a different thing from Rex trusting Ada.
+- **ARGUMENT** — the knowledge graph. Every claim anyone makes becomes a node,
+  linked to the things it's about, the sources cited for it, and — via a scribe
+  that reads each round — the other claims it supports or contradicts.
+
+**Table talk** is the transcript, with a citation chip under any remark where the
+agent actually ran a search. The source is stamped server-side, so it can't be
+hallucinated.
+
+**Who changed their mind** charts each agent's stance on the topic across the
+six rounds. It is the most interesting question about any debate and it is the
+one thing most multi-agent demos can't answer.
+
+**Where they landed** closes the session: each party's settled position, what the
+room agreed on, and what it didn't — written by a rapporteur that reads the whole
+transcript once at the end.
+
+---
+
+## Taking your seat
+
+<!-- ![Speaking into the discussion](docs/images/voice.png) -->
+
+Press the mic and say something. It lands in the transcript and every agent sees
+it on their next turn, so they answer you. It costs no round and requires no
+particular form — you can just make a point, or ask the question nobody asked.
+
+There is also a shared pool of resource on the table, split evenly at the start.
+Anyone, including you, can move some of theirs to someone else — to back a
+position they buy, or to pay for a concession they want. It's a stake, not the
+subject: the agents are told in as many words that the pool is what the argument
+is *over*, never what it's *about*.
+
+---
+
+## Running it
+
+One command, and it works without an API key — it falls back to scripted agents
+so the UI still demos offline.
 
 ```bash
-cp backend/.env.example backend/.env   # add your GEMINI_API_KEY
 docker compose up --build
 ```
 
-Frontend on <http://localhost:3000>, API on <http://localhost:8000> with docs
-at `/docs`. Without a key it still runs, falling back to mock agents. The web
-container waits for the API's healthcheck before starting.
+Frontend on <http://localhost:3000>, API on <http://localhost:8000> (`/docs` for
+the OpenAPI browser). Add a `GEMINI_API_KEY` to `backend/.env` for real agents,
+and optionally a `TAVILY_API_KEY` to let them search the web and a `GROQ_API_KEY`
+for fast voice transcription.
 
-> `VITE_BACKEND_URL` is compiled into the frontend bundle at **build** time, so
-> it is set as a build arg in `docker-compose.yml` rather than an environment
-> variable. It must be the URL the *browser* uses (`http://localhost:8000`),
-> not the `api` service name — the REST and WebSocket calls are client-side.
+Native setup, every environment variable, and the test commands are in
+**[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
 
-## Running without Docker
+---
 
-Docker is no longer required. `ctranslate2` now ships a wheel for Python 3.13+
-(4.8.1 has `cp314`), so the whole stack — including the Whisper voice pipeline —
-installs and runs natively on Python 3.12–3.14.
+## Reading the code
 
-> **Windows PowerShell:** these are one command per block on purpose.
-> PowerShell 5.1 has no `&&` — chain with `;` if you want them on one line.
-
-Create the virtualenv:
-
-```powershell
-python -m venv backend\.venv
-```
-
-Install the dependencies. Note this is **not** `pip install -e .`: the backend is
-an application, not a distributable package (`[tool.uv] package = false`, no
-`[build-system]`), so its dependencies are installed directly.
-
-```powershell
-backend\.venv\Scripts\python -m pip install fastapi "uvicorn[standard]" google-genai faster-whisper networkx pydantic pydantic-settings python-multipart tavily-python pytest pytest-asyncio httpx
-```
-
-Run the API:
-
-```powershell
-backend\.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000 --app-dir backend
-```
-
-Run the tests (from the `backend` directory, so pytest finds `app`):
-
-```powershell
-cd backend; .venv\Scripts\python -m pytest -q
-```
-
-On macOS or Linux the interpreter is at `backend/.venv/bin/python` and `&&`
-works as usual.
-
-## Running the backend on its own
-
-No host Python required (and in fact impossible here: `faster-whisper`'s engine
-has no wheel for this machine's Python 3.14, so the image pins 3.12). This
-compose file mounts the source and runs uvicorn with `--reload`:
-
-```bash
-docker compose -f backend/docker-compose.yml up --build
-```
-
-Full setup, environment variables, the API and WebSocket contract, and the two
-negotiation rules worth explaining live: [`backend/README.md`](backend/README.md).
-
-## Running the frontend on its own
-
-The frontend uses **Bun** — the lockfile is `bun.lock` and `bunfig.toml` sets a
-24-hour supply-chain guard on new package versions.
-
-```bash
-cd frontend && bun install && bun run dev
-```
-
-Dev server on <http://localhost:8080> (the port matters — it is in the
-backend's default `ALLOWED_ORIGINS`). Other scripts:
-
-| Command | What it does |
+| If you want to know… | Read |
 | --- | --- |
-| `bun run dev` | Vite dev server with SSR and HMR |
-| `bun run build` | Production build → `dist/client` + `dist/server` |
-| `bun run serve.ts` | Serve the build (static assets + SSR) on `:3000` |
-| `bun run typecheck` | `tsc --noEmit` |
-| `bun run lint` | ESLint + Prettier |
-| `bun run format` | Prettier `--write` |
+| How a session actually runs, end to end | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** |
+| How to run, test, and configure it | **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** |
+| The HTTP + WebSocket contract in detail | [docs/BACKEND.md](docs/BACKEND.md) |
+| Conventions and gotchas, for AI coding agents | [CLAUDE.md](CLAUDE.md) |
 
-The app selects its data source automatically:
+Two directories:
 
-- **No `VITE_BACKEND_URL`** → a scripted six-round mock, so the UI demos offline.
-- **`VITE_BACKEND_URL=http://localhost:8000`** → the real backend over REST +
-  WebSocket. No component changes; only the client swaps.
+| Path | What it is |
+| --- | --- |
+| `backend/` | FastAPI service — the session engine, the agents, both graphs, the WebSocket. |
+| `frontend/` | TanStack Start single-page app — canvas graph renderers, transcript, voice capture. |
 
-## How the two halves talk
+The halves each keep their own language's convention — `snake_case` on the wire,
+`camelCase` in TypeScript — and exactly one adapter
+(`frontend/src/lib/negotiation/adapter.ts`) translates between them. Nothing else
+in the frontend touches a backend field name.
 
-Each side keeps its own language's convention — `snake_case` on the wire and in
-Python, `camelCase` in TypeScript — and a single adapter
-(`frontend/src/lib/negotiation/adapter.ts`) translates between them, including
-the trust-weight rescale (backend `0..1` with `0.5` neutral → renderer `-1..1`
-with `0` neutral). Nothing else in the frontend touches a backend field name.
+---
+
+## A note on what this is
+
+It began as a scored bargaining game: hidden objectives, utility scores, a
+winner. That turned out to be the less interesting half. What people actually
+watch is the argument — so the objectives went, the scoring went, and the graphs
+that record *what was claimed* went in.
+
+The bargaining machinery is still there, deliberately demoted. If you find
+something that still talks like a game, it's a leftover, not a design.
