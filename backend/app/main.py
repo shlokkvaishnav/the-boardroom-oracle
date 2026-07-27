@@ -131,7 +131,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         from app.speech.parse_offer import VoiceOfferParser
 
         app.state.llm_client = build_llm_client(settings)
-        app.state.offer_parser = VoiceOfferParser(app.state.llm_client, settings)
+        app.state.offer_parser = VoiceOfferParser(app.state.llm_client)
 
         # Shared across sessions like the client it wraps: it holds no state,
         # and every call it makes queues behind the same global rate limit.
@@ -143,7 +143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if settings.enable_synthesis:
             from app.agents.rapporteur import Rapporteur
 
-            app.state.rapporteur = Rapporteur(app.state.llm_client, settings)
+            app.state.rapporteur = Rapporteur(app.state.llm_client)
 
     # `allow_credentials` must be False alongside a wildcard origin — the CORS
     # spec forbids the combination and Starlette silently drops the header.

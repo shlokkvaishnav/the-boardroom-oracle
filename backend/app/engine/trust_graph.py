@@ -32,7 +32,7 @@ before anyone replies.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 import networkx as nx
@@ -45,7 +45,6 @@ __all__ = [
     "INITIAL_WEIGHT",
     "clamp01",
     "favorability",
-    "bundle_favorability",
     "TrustGraph",
 ]
 
@@ -76,50 +75,16 @@ def clamp01(value: float) -> float:
     return max(0.0, min(1.0, value))
 
 
-def bundle_favorability(
-    lines: Mapping[str, float], totals: Mapping[str, float]
-) -> float:
-    """How generous a multi-issue offer is, in [0, 1].
-
-    THE RULE
-        Normalise each issue against its own total, then take the mean across
-        *every* issue on the table — including the ones this offer does not
-        touch, which contribute zero.
-
-            favorability = (1/n) * SUM over issues of (amount_i / total_i)
-
-    Two properties make this the right rule, and both are load-bearing because
-    this number feeds the trust graph.
-
-    **It is unit-safe.** Issues are measured in different things — dollars,
-    weeks, engineers — so raw amounts cannot be added. Normalising first is the
-    only way to compare "30 of the budget" with "2 of the 6 weeks".
-
-    **It answers "how much of everything did you hand over?"** Averaging over
-    all issues rather than only the touched ones is the part worth stating out
-    loud. Give away one issue entirely on a four-issue table and this reads
-    0.25, not 1.0 — because you gave a quarter of what was on the table, and a
-    rule that scored it 1.0 would let an agent buy maximum trust with the one
-    issue it happened not to care about.
-
-    Single-issue play is the one-element case and reduces exactly to
-    `amount / total`, which is what the rule has always been. There is no
-    separate path for it.
-    """
-    live = {issue: total for issue, total in totals.items() if total > 0}
-    if not live:
-        return 0.0
-    share = sum(clamp01(lines.get(issue, 0.0) / total) for issue, total in live.items())
-    return clamp01(share / len(live))
-
-
 def favorability(amount: float, pool_total: float) -> float:
-    """The single-issue case of `bundle_favorability`.
+    """How generous an offer is, as a fraction of the pool, in [0, 1].
 
-    Kept as its own name because the one-pool code path still calls it, and
-    because "fraction of the pool" is how the rule gets explained out loud.
+    This number feeds the trust graph, so it has to mean one thing: how much of
+    what you had did you hand over? An empty or zero-sized pool reads 0.0 rather
+    than dividing by zero.
     """
-    return bundle_favorability({"pool": amount}, {"pool": pool_total})
+    if pool_total <= 0:
+        return 0.0
+    return clamp01(amount / pool_total)
 
 
 class TrustGraph:
@@ -214,7 +179,7 @@ class TrustGraph:
         """The receiver accepted, proving a willing partner — the sender trusts them more.
 
         The `0.5 +` floor means accepting *anything* earns credit, with a
-        generous deal earning up to half again as much.
+        generous offer earning up to half again as much.
         """
         delta = self.tuning.accept_gain * (0.5 + favorability(amount, pool_total))
         self._graph.edges[sender, receiver]["last_offer_accepted"] = True

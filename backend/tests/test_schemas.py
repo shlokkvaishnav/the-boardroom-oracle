@@ -191,22 +191,8 @@ def test_state_has_exactly_the_contracted_top_level_keys() -> None:
     }
 
 
-def test_closing_positions_is_null_before_the_reveal() -> None:
+def test_closing_positions_is_null_until_the_discussion_ends() -> None:
     assert _sample_state().wire()["closing_positions"] is None
-
-
-def test_agent_info_never_carries_a_hidden_objective_field() -> None:
-    """Hidden objectives must be structurally impossible to leak pre-reveal."""
-    assert "objective" not in AgentInfo.model_fields
-    with pytest.raises(ValidationError):
-        AgentInfo(
-            id="x",
-            name="X",
-            persona="Maximizer",
-            color="#fff",
-            is_human=False,
-            objective="hold >60% of the pool",  # type: ignore[call-arg]
-        )
 
 
 # --------------------------------------------------------------------------- #

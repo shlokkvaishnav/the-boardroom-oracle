@@ -22,15 +22,12 @@ __all__ = [
     "ContractModel",
     "utc_now_iso",
     "Pool",
-    "Issue",
-    "OfferLine",
     "AgentInfo",
     "GraphNode",
     "GraphEdge",
     "TrustGraphView",
     "KnowledgeNodeKind",
     "KnowledgeEdgeKind",
-    "Verdict",
     "KnowledgeNode",
     "KnowledgeEdge",
     "KnowledgeGraphView",
@@ -74,55 +71,21 @@ class ContractModel(BaseModel):
 
 
 class Pool(ContractModel):
-    """The single contested resource pool.
+    """The shared resource the parties can move between each other.
 
-    Being replaced by `Issue`: one pool makes the table zero-sum by
-    construction, so the only move available to anyone is "give me more".
-    Kept until the migration to `issues` is complete.
+    A stake at the table rather than the subject of the session: the discussion
+    is about the topic, and the pool is what anyone can put behind a position.
     """
 
     resource: str
     total: float
 
 
-class Issue(ContractModel):
-    """One thing on the table, with its own units and its own quantity.
-
-    Several issues is what makes the negotiation *integrative* rather than
-    merely distributive. With one pool, every gain is someone's loss and the
-    only available argument is about the split. With budget, timeline and
-    headcount on the table — each valued differently by each party — there are
-    trades that leave both sides better off, and finding one is the actual
-    skill the demo is meant to show.
-
-    Single-issue play is exactly the one-element case, so nothing needs a
-    special path.
-    """
-
-    id: str
-    label: str
-    total: float
-    #: Optional unit for display: "weeks", "engineers". Purely cosmetic.
-    unit: str | None = None
-
-
-class OfferLine(ContractModel):
-    """One issue's worth of a proposed transfer.
-
-    An offer is a *bundle* of these, which is the whole point: "you take the
-    budget, I take the deadline" is one offer with two lines, and cannot be
-    expressed at all as a single amount.
-    """
-
-    issue: str
-    amount: float
-
-
 class AgentInfo(ContractModel):
     """A seat at the table — three AI agents plus one human slot.
 
-    `persona` is the negotiation style ("Cooperator"); it is public. The hidden
-    session carries no hidden goals, so there is nothing else to withhold.
+    `persona` is the temperament ("Cooperator"); it is public. There are no
+    hidden goals, so there is nothing else to withhold.
     """
 
     id: str
@@ -236,11 +199,6 @@ KnowledgeNodeKind = Literal["party", "claim", "entity", "evidence"]
 #: by something that reads the whole round — see the scribe.
 KnowledgeEdgeKind = Literal["asserts", "about", "cites", "supports", "contradicts"]
 
-#: A fact-check outcome. `unchecked` is the honest default: most claims are
-#: never checked, and rendering them as "unverified" would imply an attempt that
-#: never happened.
-Verdict = Literal["unchecked", "supported", "unsupported", "contradicted"]
-
 
 class KnowledgeNode(ContractModel):
     """One node: a party, something they claimed, a thing, or a source.
@@ -260,8 +218,6 @@ class KnowledgeNode(ContractModel):
     author_id: str | None = None
     #: claim only — fact / value / prediction, mirroring `agent_io.ClaimKind`.
     claim_kind: str | None = None
-    #: claim only — stays `unchecked` unless something actually checked it.
-    verdict: Verdict | None = None
     #: evidence only — where the snippet came from.
     source_url: str | None = None
 

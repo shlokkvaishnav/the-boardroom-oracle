@@ -27,7 +27,6 @@ import logging
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.config import Settings
 from app.llm_client import LLMClient, LLMError
 from app.models.schemas import AgentInfo, AgentThought, KnowledgeNode
 
@@ -101,9 +100,8 @@ SYSTEM_PROMPT = "\n".join(
 class Rapporteur:
     """Reads a finished discussion and reports where it landed."""
 
-    def __init__(self, llm: LLMClient, settings: Settings) -> None:
+    def __init__(self, llm: LLMClient) -> None:
         self._llm = llm
-        self._settings = settings
 
     @staticmethod
     def _render_transcript(remarks: list[AgentThought], names: dict[str, str]) -> str:

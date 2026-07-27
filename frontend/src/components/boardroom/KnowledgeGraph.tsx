@@ -34,12 +34,6 @@ const KIND_ORDER: Record<KnowledgeNode["kind"], number> = {
 const ENTITY_COLOR = "var(--agent-3)";
 const EVIDENCE_COLOR = "var(--muted-foreground)";
 
-const VERDICT_RING: Record<string, string> = {
-  supported: "var(--trust-pos)",
-  contradicted: "var(--trust-neg)",
-  unsupported: "var(--agent-4)",
-};
-
 export function KnowledgeGraph({
   nodes,
   edges,
@@ -157,7 +151,6 @@ export function KnowledgeGraph({
           const isClaim = node.kind === "claim";
           const isSelected = selected === node.id;
           const r = node.kind === "party" ? 9 : isClaim ? 6 : 4;
-          const ring = isClaim ? VERDICT_RING[node.verdict ?? "unchecked"] : undefined;
           return (
             <g
               key={node.id}
@@ -173,8 +166,8 @@ export function KnowledgeGraph({
                 cy={y}
                 r={r + (isSelected ? 3 : 0)}
                 fill={node.kind === "evidence" ? "none" : color}
-                stroke={ring ?? color}
-                strokeWidth={ring ? 2 : 1}
+                stroke={color}
+                strokeWidth={1}
                 opacity={selected && !isSelected ? 0.35 : 1}
               />
               {node.kind !== "claim" && (
@@ -198,9 +191,6 @@ export function KnowledgeGraph({
             <span>{detail.kind}</span>
             {detail.claimKind && <span className="text-agent-4">{detail.claimKind}</span>}
             {detail.round != null && <span>round {detail.round}</span>}
-            {detail.verdict && detail.verdict !== "unchecked" && (
-              <span style={{ color: VERDICT_RING[detail.verdict] }}>{detail.verdict}</span>
-            )}
           </div>
           <p className="mt-1 font-mono text-[13px] leading-snug text-foreground/90">
             {detail.label}

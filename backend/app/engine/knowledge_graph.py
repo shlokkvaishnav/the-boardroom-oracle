@@ -16,14 +16,13 @@ WHO MAY SAY WHAT
     engine stamps evidence (`cites`) from search records that really ran. A
     scribe reading the whole round adds `supports` and `contradicts`, because
     noticing that one claim rebuts another said two turns ago by someone else
-    is a cross-transcript judgement no single speaker can make. A fact-checker
-    stamps verdicts.
+    is a cross-transcript judgement no single speaker can make.
 
     Keeping those lanes separate is what stops the graph from becoming a place
     where a model asserts things about other models' arguments unchallenged.
 
 NODE IDENTITY
-    Parties reuse their negotiation ids, so `cooperator` is the same node here
+    Parties reuse their session ids, so `cooperator` is the same node here
     as in the trust graph. Claims are sequential (`c1`, `c2`). Entities and
     evidence are keyed by a normalised natural key, so the same smelter
     mentioned in four rounds is one node with four edges into it — which is the
@@ -44,7 +43,6 @@ from app.models.schemas import (
     KnowledgeEdgeKind,
     KnowledgeGraphView,
     KnowledgeNode,
-    Verdict,
 )
 
 logger = logging.getLogger("boardroom.knowledge")
@@ -76,9 +74,7 @@ class KnowledgeDelta:
     """What one event added. Emitted as an incremental frame.
 
     Both lists are additive — this graph never removes or rewrites, so a client
-    can merge a delta by upsert and never needs to reconcile a deletion. The
-    one thing that mutates in place is a claim's `verdict`, which arrives as the
-    same node id with a filled-in field.
+    can merge a delta by upsert and never needs to reconcile a deletion.
     """
 
     nodes: list[KnowledgeNode] = field(default_factory=list)
@@ -121,7 +117,6 @@ class KnowledgeGraph:
             round=data.get("round"),
             author_id=data.get("author_id"),
             claim_kind=data.get("claim_kind"),
-            verdict=data.get("verdict"),
             source_url=data.get("source_url"),
         )
 
@@ -134,14 +129,6 @@ class KnowledgeGraph:
                 for source, target, data in self._graph.edges(data=True)
             ],
         )
-
-    def claims_by(self, author_id: str) -> list[KnowledgeNode]:
-        """Everything one party has asserted, oldest first."""
-        return [
-            self.node(node_id)
-            for node_id in self._graph.nodes
-            if self._graph.nodes[node_id].get("author_id") == author_id
-        ]
 
     # -- internals ---------------------------------------------------------- #
 
@@ -176,7 +163,7 @@ class KnowledgeGraph:
         """Record one assertion, its author, and what it is about.
 
         Returns the new claim's id alongside the delta, because callers
-        immediately need it — evidence and verdicts both attach to a claim.
+        immediately need it — evidence attaches to a claim.
         """
         self._claim_seq += 1
         claim_id = f"c{self._claim_seq}"
@@ -189,7 +176,6 @@ class KnowledgeGraph:
             round=round,
             author_id=author_id,
             claim_kind=claim_kind,
-            verdict="unchecked",
         )
         delta = KnowledgeDelta(nodes=[node])
 
@@ -266,17 +252,3 @@ class KnowledgeGraph:
 
         edge = self._connect(source_claim, target_claim, kind)
         return KnowledgeDelta(edges=[edge] if edge else [])
-
-    def set_verdict(self, *, claim_id: str, verdict: Verdict) -> KnowledgeDelta:
-        """Stamp a fact-check outcome onto a claim.
-
-        The one mutation in an otherwise append-only graph, so it is emitted as
-        the same node id carrying a changed field — a client merging by upsert
-        gets it right without special handling.
-        """
-        data = self._graph.nodes.get(claim_id)
-        if data is None or data["kind"] != "claim":
-            logger.warning("verdict for unknown claim %r, dropping", claim_id)
-            return KnowledgeDelta()
-        data["verdict"] = verdict
-        return KnowledgeDelta(nodes=[self.node(claim_id)])

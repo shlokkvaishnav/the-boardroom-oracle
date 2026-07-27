@@ -72,7 +72,7 @@ def settings(**over) -> Settings:
 async def test_an_empty_discussion_is_not_worth_a_call() -> None:
     llm = FakeLLM({"statements": [], "agreed": [], "unresolved": []})
 
-    result = await Rapporteur(llm, settings()).summarise(  # type: ignore[arg-type]
+    result = await Rapporteur(llm).summarise(  # type: ignore[arg-type]
         topic="anything", parties=parties(), remarks=[], claims=[]
     )
 
@@ -84,7 +84,7 @@ async def test_a_failed_call_returns_none_so_the_caller_can_fall_back() -> None:
     """None, not an empty synthesis — the caller must tell them apart."""
     llm = FakeLLM(error=LLMError("upstream down"))
 
-    result = await Rapporteur(llm, settings()).summarise(  # type: ignore[arg-type]
+    result = await Rapporteur(llm).summarise(  # type: ignore[arg-type]
         topic="t", parties=parties(), remarks=remarks(), claims=[]
     )
 
@@ -101,7 +101,7 @@ async def test_agreeing_on_nothing_is_a_result_not_a_failure() -> None:
         }
     )
 
-    result = await Rapporteur(llm, settings()).summarise(  # type: ignore[arg-type]
+    result = await Rapporteur(llm).summarise(  # type: ignore[arg-type]
         topic="t", parties=parties(), remarks=remarks(), claims=[]
     )
 
@@ -123,7 +123,7 @@ async def test_a_position_attributed_to_nobody_at_the_table_is_dropped() -> None
         }
     )
 
-    result = await Rapporteur(llm, settings()).summarise(  # type: ignore[arg-type]
+    result = await Rapporteur(llm).summarise(  # type: ignore[arg-type]
         topic="t", parties=parties(), remarks=remarks(), claims=[]
     )
 

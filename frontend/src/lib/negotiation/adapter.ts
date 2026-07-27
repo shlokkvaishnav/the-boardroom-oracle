@@ -6,7 +6,7 @@
  * -1..1 where 0 is neutral. Rather than bend either side, every difference is
  * handled here, in one file, so the components stay unaware of it.
  *
- * Backend reference: backend/README.md -> "Frontend integration".
+ * Backend reference: docs/BACKEND.md -> "Frontend integration".
  */
 import type {
   Agent,
@@ -71,7 +71,6 @@ export interface WireKnowledgeNode {
   round: number | null;
   author_id: string | null;
   claim_kind: string | null;
-  verdict: KnowledgeNode["verdict"];
   source_url: string | null;
 }
 
@@ -166,7 +165,6 @@ export const toKnowledgeNode = (n: WireKnowledgeNode): KnowledgeNode => ({
   round: n.round,
   authorId: n.author_id,
   claimKind: n.claim_kind,
-  verdict: n.verdict,
   sourceUrl: n.source_url,
 });
 
@@ -188,7 +186,7 @@ export const toState = (s: WireState): NegotiationState => ({
   whispers: s.whispers ?? [],
   holdings: s.holdings ?? {},
   closingPositions: s.closing_positions,
-  // Only the closing frame carries these; a mid-game snapshot has none.
+  // Only the closing frame carries these; a mid-session snapshot has none.
   agreed: [],
   unresolved: [],
   synthesised: false,
@@ -222,8 +220,7 @@ export function mergeOffer(log: Offer[], incoming: Offer): Offer[] {
  * Fold a `knowledge_update` delta in.
  *
  * The graph is additive, so this is a pure upsert and never needs to reconcile
- * a deletion. The one in-place change is a claim re-sent with a filled-in
- * `verdict`, which upserting on node id handles without a special case.
+ * a deletion — nothing is ever removed, and nothing is ever rewritten.
  */
 export function mergeKnowledge(
   current: { nodes: KnowledgeNode[]; edges: KnowledgeEdge[] },

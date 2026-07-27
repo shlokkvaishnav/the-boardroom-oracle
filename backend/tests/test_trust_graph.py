@@ -261,72 +261,27 @@ def test_weights_are_rounded_for_the_wire(graph: TrustGraph) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Multi-issue generosity — the rule the trust graph will be fed
+# Generosity — the number the trust graph is fed
 # --------------------------------------------------------------------------- #
 
 
-def test_one_issue_reduces_exactly_to_the_old_rule() -> None:
-    """The property that lets single-issue play keep working untouched."""
-    from app.engine.trust_graph import bundle_favorability, favorability
+def test_favorability_is_the_fraction_of_the_pool_handed_over() -> None:
+    from app.engine.trust_graph import favorability
 
-    for amount, total in [(0.0, 100.0), (25.0, 100.0), (50.0, 100.0), (100.0, 100.0)]:
-        assert bundle_favorability({"budget": amount}, {"budget": total}) == favorability(
-            amount, total
-        )
-
-
-def test_giving_one_issue_of_four_scores_a_quarter_not_everything() -> None:
-    """The judgement call at the heart of the rule.
-
-    Scoring this 1.0 would let an agent buy maximum trust by handing over the
-    single issue it happened not to care about.
-    """
-    from app.engine.trust_graph import bundle_favorability
-
-    totals = {"budget": 100.0, "weeks": 8.0, "heads": 4.0, "blame": 1.0}
-
-    assert bundle_favorability({"budget": 100.0}, totals) == pytest.approx(0.25)
-    assert bundle_favorability({"weeks": 8.0}, totals) == pytest.approx(0.25)
-
-
-def test_handing_over_everything_is_total_generosity() -> None:
-    from app.engine.trust_graph import bundle_favorability
-
-    totals = {"budget": 100.0, "weeks": 8.0}
-
-    assert bundle_favorability({"budget": 100.0, "weeks": 8.0}, totals) == pytest.approx(1.0)
-
-
-def test_generosity_is_unit_safe_across_issues() -> None:
-    """Half of each issue is half of everything, whatever the units are."""
-    from app.engine.trust_graph import bundle_favorability
-
-    totals = {"budget": 1000.0, "weeks": 6.0}
-
-    assert bundle_favorability({"budget": 500.0, "weeks": 3.0}, totals) == pytest.approx(0.5)
-
-
-def test_untouched_issues_count_as_zero_not_as_absent() -> None:
-    from app.engine.trust_graph import bundle_favorability
-
-    totals = {"budget": 100.0, "weeks": 8.0}
-
-    # Half the budget, nothing else: a quarter of the table.
-    assert bundle_favorability({"budget": 50.0}, totals) == pytest.approx(0.25)
+    assert favorability(0.0, 100.0) == pytest.approx(0.0)
+    assert favorability(25.0, 100.0) == pytest.approx(0.25)
+    assert favorability(100.0, 100.0) == pytest.approx(1.0)
 
 
 def test_degenerate_inputs_are_zero_rather_than_a_crash() -> None:
-    from app.engine.trust_graph import bundle_favorability
+    from app.engine.trust_graph import favorability
 
-    assert bundle_favorability({}, {}) == 0.0
-    assert bundle_favorability({"budget": 5.0}, {"budget": 0.0}) == 0.0
-    assert bundle_favorability({"ghost": 5.0}, {"budget": 100.0}) == 0.0
+    assert favorability(5.0, 0.0) == 0.0
+    assert favorability(5.0, -1.0) == 0.0
 
 
-def test_an_overlarge_line_cannot_inflate_the_score() -> None:
-    """Clamped per issue, so one hallucinated amount can't skew the mean."""
-    from app.engine.trust_graph import bundle_favorability
+def test_an_overlarge_amount_cannot_inflate_generosity() -> None:
+    """Clamped, so one hallucinated amount can't buy unlimited trust."""
+    from app.engine.trust_graph import favorability
 
-    totals = {"budget": 100.0, "weeks": 8.0}
-
-    assert bundle_favorability({"budget": 10_000.0}, totals) == pytest.approx(0.5)
+    assert favorability(10_000.0, 100.0) == pytest.approx(1.0)

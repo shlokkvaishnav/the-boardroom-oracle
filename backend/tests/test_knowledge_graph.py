@@ -92,7 +92,6 @@ def test_a_claim_records_its_author_round_and_kind() -> None:
     assert node.author_id == COOP
     assert node.round == 3
     assert node.claim_kind == "prediction"
-    assert node.verdict == "unchecked", "nothing has checked it, and saying so is honest"
     assert any(e.kind == "asserts" and e.source == COOP for e in delta.edges)
 
 
@@ -179,28 +178,13 @@ def test_a_claim_cannot_support_itself() -> None:
     ).empty
 
 
-def test_evidence_and_verdicts_for_unknown_claims_are_dropped_not_raised() -> None:
+def test_evidence_for_an_unknown_claim_is_dropped_not_raised() -> None:
     """A malformed observer must never take the session down mid-round."""
     graph = build()
 
     assert graph.add_evidence(
         claim_id="c999", snippet="s", source_url="http://x"
     ).empty
-    assert graph.set_verdict(claim_id="c999", verdict="supported").empty
-
-
-def test_a_verdict_re_emits_the_claim_so_clients_can_merge_by_upsert() -> None:
-    graph = build()
-    claim_id, _ = graph.add_claim(
-        author_id=COOP, text="Output fell 12%.", claim_kind="fact", round=1
-    )
-
-    delta = graph.set_verdict(claim_id=claim_id, verdict="contradicted")
-
-    assert [n.id for n in delta.nodes] == [claim_id]
-    assert delta.nodes[0].verdict == "contradicted"
-    assert not delta.edges
-    assert graph.node(claim_id).verdict == "contradicted"
 
 
 # --------------------------------------------------------------------------- #

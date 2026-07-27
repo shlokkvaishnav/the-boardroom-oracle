@@ -331,7 +331,7 @@ async def _play_one_round(*, search_query: str | None) -> tuple[Recorder, Script
     recorder = Recorder()
     engine = NegotiationEngine(
         session_id="ctx1",
-        agents=build_llm_agents(llm, settings, search=search),
+        agents=build_llm_agents(llm, search=search),
         settings=settings,
         emit=recorder,
         context_topic="the 2026 copper supply squeeze",

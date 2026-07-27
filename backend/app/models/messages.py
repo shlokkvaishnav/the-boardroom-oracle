@@ -2,11 +2,11 @@
 
 Every frame is `{"type": ..., "payload": {...}}`, discriminated on `type`.
 
-CONTRACT NOTE â€” `state` is an addition to the type list in the original spec.
-The spec required "on connect, send the current full NegotiationState" but
-listed the union as "e.g. offer | graph_update | thought | round_change |
-reveal", with no variant able to carry a full state snapshot. `state` fills
-that gap and is also re-sent after a reset.
+The union is `state | round_change | thought | whisper | knowledge_update |
+offer | graph_update | closing`. `state` is the full snapshot, sent once on
+connect and again after a reset; everything else is an incremental delta the
+client merges into it. `closing` carries a final snapshot of its own, so a
+client that joins late still ends up with a complete picture.
 """
 
 from __future__ import annotations
@@ -51,9 +51,10 @@ __all__ = [
 class GraphUpdatePayload(ContractModel):
     """The edges whose weight changed as a result of one action.
 
-    A single action moves exactly one edge, but this is a list so that session
-    start and reset can push the whole graph through the same frame type.
-    `reason` names the rule that fired, so the UI can label the change.
+    In practice a single action moves exactly one edge; the list leaves room for
+    a rule that moves several. Nodes never ride this frame — a client learns the
+    roster from `state` and only ever merges edge weights here. `reason` names
+    the rule that fired, so the UI can label the change.
     """
 
     edges: list[GraphEdge] = Field(default_factory=list)
@@ -64,8 +65,7 @@ class KnowledgeUpdatePayload(ContractModel):
     """What one event added to the knowledge graph.
 
     Purely additive, so a client merges by upserting on node id and edge
-    (source, target) — nothing is ever removed. A re-sent node carrying a
-    changed `verdict` is the one in-place update, and upsert handles it.
+    (source, target) — nothing is ever removed, and nothing is ever rewritten.
     `reason` names what produced this, so the UI can distinguish a claim the
     speaker made from a link a scribe inferred.
     """
