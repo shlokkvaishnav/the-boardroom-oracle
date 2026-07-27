@@ -68,7 +68,7 @@ class ScribeReading(BaseModel):
 
 SYSTEM_PROMPT = "\n".join(
     [
-        "You read a transcript of claims made in a negotiation and report only how "
+        "You read a transcript of claims made in a discussion and report only how "
         "they relate to each other. You take no side and make no claims of your own.",
         "",
         "You are looking for two things:",
@@ -83,8 +83,8 @@ SYSTEM_PROMPT = "\n".join(
         "a relation:",
         "  - two claims merely mentioning the same subject",
         "  - a value judgement agreeing in spirit with a factual claim",
-        "  - two parties wanting different outcomes (that is the negotiation, not "
-        "    a contradiction)",
+        "  - two parties wanting different outcomes (that is the disagreement "
+        "    itself, not a contradiction between claims)",
         "  - a claim restating another in different words",
         "",
         "Returning an empty list is the correct answer most rounds. Never link a "

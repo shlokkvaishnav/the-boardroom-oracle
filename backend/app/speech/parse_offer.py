@@ -12,7 +12,6 @@ import logging
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.config import Settings
 from app.llm_client import LLMClient, LLMError
 from app.models.schemas import AgentInfo, OfferSchema
 
@@ -45,9 +44,8 @@ class VoiceOfferDraft(BaseModel):
 class VoiceOfferParser:
     """Free-form transcript -> validated `OfferSchema`, or `None`."""
 
-    def __init__(self, llm: LLMClient, settings: Settings) -> None:
+    def __init__(self, llm: LLMClient) -> None:
         self._llm = llm
-        self._settings = settings
 
     def system_prompt(self, parties: list[AgentInfo], resource: str, speaker_id: str) -> str:
         roster = "\n".join(
@@ -55,7 +53,10 @@ class VoiceOfferParser:
         )
         return "\n".join(
             [
-                "You convert a spoken sentence into a structured negotiation offer.",
+                "You check whether a spoken sentence contains an offer of resource, "
+                "and extract it if so. Most sentences are not offers — they are "
+                "points, questions and objections — and reporting understood=false "
+                "for those is the correct and expected answer, not a failure.",
                 "",
                 f"The speaker is {speaker_id}. An offer transfers {resource} FROM the "
                 f"speaker TO another party, so `to` must never be {speaker_id!r}.",
@@ -67,8 +68,9 @@ class VoiceOfferParser:
                 "  - Speakers refer to parties by name, by role, or loosely "
                 "    ('the aggressive one'). Map to the closest id.",
                 "  - Convert spoken numbers to digits: 'twelve and a half' -> 12.5.",
-                "  - Set understood=false if no clear recipient or no clear amount was "
-                "    given, or if the sentence is a question rather than an offer.",
+                "  - Set understood=false whenever no clear recipient or no clear "
+                "    amount was named — including for questions, objections, and "
+                "    anything that is simply a point being made.",
                 "  - Never guess an amount that wasn't said.",
             ]
         )

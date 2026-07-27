@@ -5,7 +5,7 @@ WebSockets. It emits typed messages through an injected async callback, which
 is what lets the whole game be driven and asserted in tests with no server
 running and no LLM involved.
 
-Shape of a game:
+Shape of a session:
 
     for each round 1..N:
         emit round_change
@@ -240,7 +240,7 @@ class NegotiationEngine:
             pass
 
     async def run(self) -> None:
-        """Play the game to completion. Normally driven by `start()`."""
+        """Run the discussion to completion. Normally driven by `start()`."""
         try:
             for round_number in range(1, self.total_rounds + 1):
                 if self._stopped:
@@ -474,7 +474,7 @@ class NegotiationEngine:
 
         Returns immediately — the pass runs as a background task. This is the
         whole design constraint: the scribe is an observer, so it must never sit
-        between a player and their turn. Called at the end of a round rather
+        between an agent and their turn. Called at the end of a round rather
         than awaited anywhere in `_take_turn` for exactly that reason.
         """
         if self._scribe is None or not self._settings.enable_scribe:
@@ -565,7 +565,7 @@ class NegotiationEngine:
     async def _settle_scribes(self) -> None:
         """Let outstanding passes finish before the closing snapshot is built.
 
-        Waited on only at the very end, where the game is over and a second or
+        Waited on only at the very end, where the discussion is over and a second or
         two costs nothing anyone is watching for. It is what stops the final
         state from missing a link whose call was still in flight when the last
         round ended.
@@ -683,7 +683,7 @@ class NegotiationEngine:
         `strict` is the difference between a human and an agent. A human typed
         this, so a bad offer is a clear 400 rather than a silent correction. An
         LLM may hallucinate an amount it doesn't hold, so its offer is clamped
-        to what it actually has and the game keeps moving.
+        to what it actually has and the discussion keeps moving.
 
         Returns `None` when a non-strict offer can't be salvaged.
         """
@@ -1004,7 +1004,7 @@ class NegotiationEngine:
     # ------------------------------------------------------------------ #
 
     async def _emit(self, message: WSMessage) -> None:
-        """Push one frame, never letting a broken listener kill the game."""
+        """Push one frame, never letting a broken listener kill the session."""
         try:
             await self._emit_cb(message)
         except Exception:  # pragma: no cover - defensive

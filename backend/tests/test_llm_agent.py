@@ -91,7 +91,7 @@ def make_context(
 
 def make_agent(*outcomes: Any, persona: str = "cooperator") -> tuple[LLMAgent, FakeLLM]:
     llm = FakeLLM(*outcomes)
-    agent = LLMAgent(persona_by_id(persona), llm, make_settings())  # type: ignore[arg-type]
+    agent = LLMAgent(persona_by_id(persona), llm)  # type: ignore[arg-type]
     return agent, llm
 
 
@@ -294,10 +294,24 @@ def test_the_turn_prompt_shows_pending_offers_with_their_ids() -> None:
     assert "maximizer offers you 7 budget" in rendered
 
 
-def test_the_turn_prompt_states_when_nothing_is_pending() -> None:
-    agent, _ = make_agent()
+def test_the_turn_prompt_omits_the_ledger_when_nothing_has_been_traded() -> None:
+    """A discussion where nobody traded must not spend lines saying so.
 
-    assert "cannot accept or reject anything" in agent.render_turn(make_context())
+    The ledger sections used to render as "(none)" and "(nothing has happened
+    yet)" every turn, which told the model about a mechanic nobody was using
+    and crowded out what was actually said.
+    """
+    rendered = make_agent()[0].render_turn(make_context())
+
+    assert "OFFERS AWAITING YOUR ANSWER" not in rendered
+    assert "RESOURCE MOVED SO FAR" not in rendered
+
+
+def test_the_turn_prompt_leads_with_what_was_said() -> None:
+    """The argument comes first; the ledger is context underneath it."""
+    rendered = make_agent()[0].render_turn(make_context())
+
+    assert rendered.startswith("WHAT HAS BEEN SAID")
 
 
 def test_the_turn_prompt_includes_holdings_round_and_beliefs() -> None:
@@ -305,13 +319,14 @@ def test_the_turn_prompt_includes_holdings_round_and_beliefs() -> None:
 
     rendered = agent.render_turn(make_context())
 
-    assert "ROUND 2 OF 6" in rendered
-    assert "cooperator: 25 budget (25% of the pool)" in rendered
+    assert "Round 2 of 6" in rendered
+    assert "cooperator 25" in rendered
+    assert "100 budget" in rendered
     assert "my_trust" in rendered and "public_trust" in rendered
 
 
 def test_build_llm_agents_returns_one_agent_per_persona_in_seating_order() -> None:
-    agents = build_llm_agents(FakeLLM(), make_settings())  # type: ignore[arg-type]
+    agents = build_llm_agents(FakeLLM())  # type: ignore[arg-type]
 
     assert [agent.id for agent in agents] == [persona.id for persona in PERSONAS]
 
@@ -331,8 +346,11 @@ def test_the_context_topic_appears_in_the_system_prompt() -> None:
     assert "the 2026 copper supply squeeze" in prompt
     # The topic must be argued about, not narrated around: these are the
     # instructions that turn move-captions into an actual exchange.
-    assert "Take a" in prompt and "position" in prompt
-    assert "not what" in prompt  # "...what the argument is *over*, not *about*"
+    assert "Take a clear position" in prompt
+    # And the resource must stay subordinate to it, or the agent goes back to
+    # narrating its moves — which is what this whole framing exists to prevent.
+    assert "secondary" in prompt
+    assert "It is never the subject" in prompt
 
 
 def test_no_context_topic_leaves_the_system_prompt_as_it_was() -> None:
@@ -397,7 +415,7 @@ def make_searching_agent(
     llm.tool_call = tool_call  # type: ignore[attr-defined]
     search = FakeSearch(*search_outcomes)
     agent = LLMAgent(
-        persona_by_id("cooperator"), llm, make_settings(), search=search  # type: ignore[arg-type]
+        persona_by_id("cooperator"), llm, search=search  # type: ignore[arg-type]
     )
     return agent, llm, search
 
@@ -531,7 +549,7 @@ async def test_search_results_survive_the_validation_retry() -> None:
 async def test_a_turn_with_no_search_tool_configured_never_offers_it() -> None:
     """No TAVILY_API_KEY: a topic session still runs, just without lookups."""
     llm = FakeLLM(VALID)
-    agent = LLMAgent(persona_by_id("cooperator"), llm, make_settings())  # type: ignore[arg-type]
+    agent = LLMAgent(persona_by_id("cooperator"), llm)  # type: ignore[arg-type]
 
     decision = await agent.decide(make_context(context_topic="copper"))
 

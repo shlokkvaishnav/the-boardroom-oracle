@@ -76,7 +76,7 @@ class ConnectionManager:
         """Push one frame to every client watching `session_id`.
 
         Serialized once for all recipients. A socket that fails mid-send is
-        dropped rather than retried: the game must not stall because one
+        dropped rather than retried: the session must not stall because one
         browser tab went away.
         """
         async with self._lock:

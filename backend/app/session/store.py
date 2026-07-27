@@ -6,7 +6,7 @@ between them **except** the LLM client's rate-limit queue, which is global by
 design — see the note on `LLMClient._gate` in `app/llm_client.py`.
 
 The engine is reached only through this interface, so the in-memory
-implementation can be swapped for Redis or Postgres without the game logic
+implementation can be swapped for Redis or Postgres without the session logic
 noticing. Nothing outside this module holds an engine reference across requests.
 
 Two limits keep a small box honest:
@@ -139,7 +139,7 @@ class InMemorySessionStore:
         """Unfinished sessions only. Caller must hold the lock.
 
         A finished game still occupies memory until the sweep takes it, but it
-        makes no provider calls, so holding the next player out on its account
+        makes no provider calls, so holding the next person out on its account
         would be pointless.
         """
         return sum(1 for engine in self._engines.values() if not engine.finished)

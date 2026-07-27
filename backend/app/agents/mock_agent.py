@@ -30,6 +30,24 @@ _CLAIM_TEMPLATES: tuple[tuple[str, str], ...] = (
     ("Whoever moves last on {entity} pays for it.", "prediction"),
 )
 
+#: What a mock agent says out loud, on the same principle as the claims above.
+#:
+#: These used to narrate the move — "Taking 12 from rex", "Testing rex with 8".
+#: That is exactly the behaviour the real agents are told to avoid, so the
+#: keyless demo was teaching the opposite of what the app does. These are still
+#: obviously scaffolding; they just point at the topic instead of the ledger.
+_REMARK_TEMPLATES: tuple[str, ...] = (
+    "The question is {entity}, and nobody here has answered it.",
+    "I keep coming back to {entity}. Everything else follows from that.",
+    "That argument works right up until you get to {entity}.",
+    "You are assuming {entity} holds. What if it doesn't?",
+    "Fine — but that still leaves {entity} on someone's desk.",
+)
+
+#: Said when there is no topic to point at, so the fallback is honest about
+#: having nothing to argue rather than inventing a subject.
+_NO_TOPIC_REMARK = "Nothing has been put on the table worth arguing about yet."
+
 #: Words too common to be worth a node of their own.
 _STOPWORDS = frozenset(
     "the a an of and or to in on for with at by from is are was were be been "
@@ -102,6 +120,19 @@ class RandomAgent:
         entity = self._rng.choice(entities)
         return [Claim(text=template.format(entity=entity), kind=kind, entities=[entity])]
 
+    def _remark(self, context: TurnContext) -> str:
+        """Something about the topic, never a description of the move.
+
+        The offer is already visible in the ledger and on the graph, so saying
+        it aloud adds nothing — which is the rule the real agents follow.
+        """
+        entities = topic_entities(context.context_topic)
+        if not entities:
+            return _NO_TOPIC_REMARK
+        return self._rng.choice(_REMARK_TEMPLATES).format(
+            entity=self._rng.choice(entities)
+        )
+
     def _stance(self, context: TurnContext) -> float | None:
         """A stance that drifts, so the keyless demo has a chart to draw.
 
@@ -129,23 +160,15 @@ class RandomAgent:
         claims = self._claims(context)
         stance = self._stance(context)
         whisper = self._whisper(context)
+        thought = self._remark(context)
 
         # Answer the oldest outstanding offer first, so offers don't pile up.
         if context.pending_offers:
             offer = context.pending_offers[0]
-            if self._rng.random() < 0.6:
-                return AgentDecision(
-                    action="accept",
-                    target_offer_id=offer.id,
-                    thought=f"Taking {offer.amount:g} from {offer.from_id}.",
-                    claims=claims,
-                    stance=stance,
-                    whisper=whisper,
-                )
             return AgentDecision(
-                action="reject",
+                action="accept" if self._rng.random() < 0.6 else "reject",
                 target_offer_id=offer.id,
-                thought=f"Not enough from {offer.from_id}.",
+                thought=thought,
                 claims=claims,
                 stance=stance,
                 whisper=whisper,
@@ -155,7 +178,7 @@ class RandomAgent:
         if not others or context.my_holdings <= 0 or self._rng.random() < 0.25:
             return AgentDecision(
                 action="pass",
-                thought="Holding position this round.",
+                thought=thought,
                 claims=claims,
                 stance=stance,
                 whisper=whisper,
@@ -164,12 +187,12 @@ class RandomAgent:
         target = self._rng.choice(others)
         amount = round(context.my_holdings * self._rng.uniform(0.05, 0.35), 2)
         if amount <= 0:
-            return AgentDecision(action="pass", thought="Nothing left to offer.")
+            return AgentDecision(action="pass", thought=thought)
 
         return AgentDecision(
             action="offer",
             offer=ProposedOffer(to=target, resource=context.pool.resource, amount=amount),
-            thought=f"Testing {target} with {amount:g}.",
+            thought=thought,
             claims=claims,
             stance=stance,
             whisper=whisper,

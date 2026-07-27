@@ -8,7 +8,7 @@ transport retries. What lives here is the *semantic* failure ladder:
          -> on second failure, fall back to a safe `pass`
 
 A turn therefore always produces a valid decision and never raises into the
-game loop. A broken response costs the agent its turn, not the demo.
+round loop. A broken response costs the agent its turn, not the demo.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from pydantic import ValidationError
 
 from app.agents.base import TurnContext
 from app.agents.personas import PERSONAS, Persona
-from app.config import Settings
 from app.llm_client import LLMClient, LLMError
 from app.models.agent_io import AgentDecision, TurnDecision
 from app.models.schemas import SearchRecord
@@ -36,19 +35,17 @@ MAX_CLAIMS = 2
 
 
 class LLMAgent:
-    """A negotiating agent backed by a Gemini call."""
+    """One participant in the discussion, backed by a Gemini call."""
 
     def __init__(
         self,
         persona: Persona,
         llm: LLMClient,
-        settings: Settings,
         search: WebSearchTool | None = None,
     ) -> None:
         self.persona = persona
         self.id = persona.id
         self._llm = llm
-        self._settings = settings
         self._search = search
 
     # ------------------------------------------------------------------ #
@@ -60,23 +57,18 @@ class LLMAgent:
 
         `context_topic` is a session-level premise, not a per-turn value, so it
         belongs here rather than in `render_turn` — it stays stable for the
-        whole game and keeps the volatile half of the prompt volatile.
+        whole session and keeps the volatile half of the prompt volatile.
         """
         premise = (
             [
                 "THE MATTER ON THE TABLE:",
                 f"  {context_topic}",
                 "",
-                "  This is a real discussion, and it is the point of the session. Take a "
-                "  clear position on it — one that follows from who you are — and argue "
-                "  it in concrete terms: consequences, precedent, who bears the cost, "
-                "  what happens next. Disagree with the others where you genuinely do. "
-                "  A room where everyone is agreeable and vague is a failed session.",
-                "",
-                "  The budget you are splitting is what the argument is *over*, not what "
-                "  the argument is *about*. Never make the money itself your subject: "
-                "  nobody wants to hear that you are 'building goodwill' or 'testing' "
-                "  someone. Say what you actually think about the matter above.",
+                "  This is what the session is for. Take a clear position on it — one "
+                "  that follows from who you are — and argue it in concrete terms: "
+                "  consequences, precedent, who bears the cost, what happens next. "
+                "  Disagree with the others where you genuinely do. A room where "
+                "  everyone is agreeable and vague is a failed session.",
                 "",
             ]
             if context_topic
@@ -84,22 +76,29 @@ class LLMAgent:
         )
         return "\n".join(
             [
-                f"You are {self.persona.name}, a negotiator at a four-seat boardroom table.",
+                f"You are {self.persona.name}, one of four people around a boardroom "
+                "table, having an argument.",
                 "",
                 *premise,
                 f"YOUR PUBLIC STYLE: {self.persona.style}. {self.persona.public_brief}",
                 "",
-                "HOW YOU PLAY:",
+                "HOW YOU ARGUE:",
                 f"  {self.persona.private_directive}",
                 "",
-                "RULES OF THE TABLE:",
-                "  - Every party starts with an equal share of one resource pool.",
-                "  - An offer transfers resource FROM you TO the named party. Offering is "
-                "    a cost to you; you cannot offer more than you currently hold.",
-                "  - Offers stay open until the party they are addressed to accepts or "
-                "    rejects them. You may only answer offers addressed to you.",
-                "  - You get one action per round: make one offer, answer one pending "
-                "    offer, or pass.",
+                "THE STAKE, which is secondary:",
+                "  There is a shared pool and everyone holds an equal slice of it at the "
+                "  start. You can move some of yours to someone else — an offer costs you "
+                "  what it gives them, you cannot offer more than you hold, and an offer "
+                "  stays open until whoever it was addressed to answers it. Each turn you "
+                "  may make one offer, answer one addressed to you, or move nothing at "
+                "  all. Moving nothing is the normal case: you are here to argue, and "
+                "  most turns you will simply speak.",
+                "",
+                "  Put resource behind a position when it says something a sentence "
+                "  cannot — backing someone whose argument you buy, or paying for a "
+                "  concession you want. It is never the subject. Nobody wants to hear "
+                "  that you are 'building goodwill' or 'testing' someone; say what you "
+                "  actually think about the matter above.",
                 "",
                 "YOUR RESPONSE:",
                 "  Return a single JSON object matching the provided schema.",
@@ -123,9 +122,12 @@ class LLMAgent:
                 "    sentence back at them; if you agree, say so in one clause and then "
                 "    add the point they missed.",
                 "  - `opponent_updates` is how your private read on the others changes "
-                "    this turn. Use negative `trust_delta` when someone works against "
-                "    you, positive when they cooperate. Omit parties you learned nothing "
-                "    new about.",
+                "    this turn. Positive `trust_delta` when someone argues in good "
+                "    faith — engages your actual point, concedes something true, keeps "
+                "    their word. Negative when they dodge, misrepresent you, or say one "
+                "    thing and do another. Disagreeing with you is not bad faith; the "
+                "    best argument in the room may be the one against you. Omit parties "
+                "    you learned nothing new about.",
                 "  - `stance` is where you stand on the matter right now, from -1 "
                 "    (completely against) to +1 (completely for), 0 for genuinely "
                 "    undecided. Report where you actually are this turn. If nobody "
@@ -143,7 +145,7 @@ class LLMAgent:
                 "    plainly so it can be recorded and checked. At most two, and often "
                 "    none: leave it empty if you only agreed, asked a question, or made "
                 "    a move without arguing for it. Two rules. Claim only things about "
-                "    the matter under discussion — never about the negotiation itself, "
+                "    the matter under discussion — never about the discussion itself, "
                 "    so 'the deadline is the real constraint' yes, 'Rex is stonewalling' "
                 "    no. And mark each one honestly: `fact` if someone could look it up, "
                 "    `prediction` if it is about what happens next, `value` if it is a "
@@ -158,30 +160,24 @@ class LLMAgent:
         roster = "\n".join(
             f"  - {party.id} ({party.name}, {party.persona})"
             + (" <- you" if party.id == self.id else "")
-            + (" [human player]" if party.is_human else "")
+            + (" [the human at the table]" if party.is_human else "")
             for party in context.parties
         )
-        holdings = "\n".join(
-            f"  - {party}: {amount:g} {context.pool.resource} "
-            f"({amount / context.pool.total:.0%} of the pool)"
-            for party, amount in context.holdings.items()
+        # One line, not one per party: the split is context, and giving it four
+        # lines every turn made the ledger the loudest thing in the prompt.
+        holdings = ", ".join(
+            f"{party} {amount:g}" for party, amount in context.holdings.items()
         )
-        pending = (
-            "\n".join(f"  - {offer.describe()}" for offer in context.pending_offers)
-            or "  (none — you cannot accept or reject anything this turn)"
-        )
-        recent = (
-            "\n".join(
-                f"  - round {offer.round}: {offer.from_} -> {offer.to} "
-                f"{offer.amount:g} {offer.resource} "
-                + (
-                    "(pending)"
-                    if offer.accepted is None
-                    else ("(accepted)" if offer.accepted else "(rejected)")
-                )
-                for offer in context.recent_offers
+        pending = "\n".join(f"  - {offer.describe()}" for offer in context.pending_offers)
+        recent = "\n".join(
+            f"  - round {offer.round}: {offer.from_} -> {offer.to} "
+            f"{offer.amount:g} {offer.resource} "
+            + (
+                "(pending)"
+                if offer.accepted is None
+                else ("(accepted)" if offer.accepted else "(rejected)")
             )
-            or "  (nothing has happened yet)"
+            for offer in context.recent_offers
         )
         beliefs = (
             context.beliefs.render(context.trust_row)
@@ -201,20 +197,6 @@ class LLMAgent:
 
         return "\n".join(
             [
-                f"ROUND {context.round} OF {context.total_rounds}.",
-                "",
-                "PARTIES:",
-                roster,
-                "",
-                f"HOLDINGS (pool total {context.pool.total:g} {context.pool.resource}):",
-                holdings,
-                "",
-                "OFFERS AWAITING YOUR ANSWER:",
-                pending,
-                "",
-                "RECENT ACTIVITY AT THE TABLE:",
-                recent,
-                "",
                 "WHAT HAS BEEN SAID (answer it — do not talk past it):",
                 remarks,
                 *(
@@ -231,13 +213,30 @@ class LLMAgent:
                     else []
                 ),
                 "",
+                "PARTIES:",
+                roster,
+                "",
                 "YOUR PRIVATE READ ON THE OTHERS:",
-                "  (my_trust is your own running score; public_trust is the visible "
+                "  (my_trust is your own running read; public_trust is the visible "
                 "trust graph. Where they disagree, trust your own read.)",
                 beliefs,
                 "",
-                f"You hold {context.my_holdings:g} {context.pool.resource}. "
-                "Decide your single action for this turn.",
+                # The ledger sections are rendered only when they have something
+                # in them. A discussion where nobody has traded should not spend
+                # four lines telling the model that nobody has traded.
+                *(
+                    ["OFFERS AWAITING YOUR ANSWER:", pending, ""]
+                    if context.pending_offers
+                    else []
+                ),
+                *(["RESOURCE MOVED SO FAR:", recent, ""] if context.recent_offers else []),
+                f"Round {context.round} of {context.total_rounds}. "
+                f"The pool is {context.pool.total:g} {context.pool.resource}, held "
+                f"{holdings}; you have {context.my_holdings:g}.",
+                "",
+                "Say what you think about the matter on the table, answering whoever "
+                "spoke last. Then decide whether to move any resource this turn — "
+                "usually you will not.",
             ]
         )
 
@@ -246,7 +245,7 @@ class LLMAgent:
     # ------------------------------------------------------------------ #
 
     async def decide(self, context: TurnContext) -> TurnDecision:
-        """Always returns a valid decision. Never raises into the game loop."""
+        """Always returns a valid decision. Never raises into the round loop."""
         system = self.system_prompt(context.context_topic)
         searched, calls = await self._maybe_search(context, system)
         prompt = self._turn_prompt(context, searched)
@@ -439,9 +438,8 @@ class LLMAgent:
 
 def build_llm_agents(
     llm: LLMClient,
-    settings: Settings,
     personas: tuple[Persona, ...] = PERSONAS,
     search: WebSearchTool | None = None,
 ) -> list[LLMAgent]:
     """One agent per persona, in seating order."""
-    return [LLMAgent(persona, llm, settings, search=search) for persona in personas]
+    return [LLMAgent(persona, llm, search=search) for persona in personas]

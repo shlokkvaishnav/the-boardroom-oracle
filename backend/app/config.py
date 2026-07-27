@@ -82,8 +82,8 @@ class Settings(BaseSettings):
     #: The arithmetic, at the defaults: three agents over six rounds is 18 calls
     #: to merely finish, or 36 when a topic is set and each turn also spends a
     #: search probe. 60 therefore never binds on a normal session — it is a
-    #: ceiling on runaway, not a throttle on ordinary play. What it buys is the
-    #: guarantee in `engine/budget.py`: the calls needed to reach the closing
+    #: ceiling on runaway, not a throttle on an ordinary session. What it buys is
+    #: the guarantee in `engine/budget.py`: the calls needed to reach the closing
     #: are reserved first, and optional enrichment only ever spends the surplus.
     session_call_budget: int = 60
 
@@ -93,9 +93,9 @@ class Settings(BaseSettings):
     enable_chair: bool = True
 
     # --- Sessions ---
-    #: How many negotiations may run at once. The cap exists because provider
-    #: quota is per API *key*, not per session — N concurrent games burn the
-    #: same Gemini budget N times as fast. Raising it does not make anything
+    #: How many discussions may run at once. The cap exists because provider
+    #: quota is per API *key*, not per session — N concurrent sessions burn the
+    #: same Gemini quota N times as fast. Raising it does not make anything
     #: faster: every agent call from every session queues behind the same
     #: global slot (see `llm_client.py`), so more sessions means slower rounds.
     max_concurrent_sessions: int = 5
@@ -110,12 +110,14 @@ class Settings(BaseSettings):
     allowed_origins: str = DEFAULT_ORIGINS
     cors_allow_all: bool = False
 
-    # --- Negotiation ---
+    # --- The discussion ---
     rounds: int = 6
     #: Doubles as demo pacing and as rate-limit headroom: with a call every
     #: ~4s minimum, a deliberate gap between turns keeps the whole round under
     #: the free tier's per-minute budget and reads as agents "thinking".
     turn_delay_seconds: float = 2.5
+    #: The stake anyone can put behind a position. Deliberately not the
+    #: subject of the session — see the prompt in `agents/llm_agent.py`.
     pool_resource: str = "budget"
     pool_total: float = 100.0
 

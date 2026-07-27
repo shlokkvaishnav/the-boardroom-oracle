@@ -48,7 +48,7 @@ class TurnContext:
     """Everything an agent may look at when deciding its move.
 
     Assembled fresh each turn by the engine, so an agent holds no state of its
-    own and can't accidentally see another agent's hidden objective.
+    own and can't accidentally see another agent's private beliefs.
     """
 
     agent_id: str
