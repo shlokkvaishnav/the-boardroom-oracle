@@ -85,26 +85,11 @@ Native setup, every environment variable, and the test commands are in
 | The HTTP + WebSocket contract in detail | [docs/BACKEND.md](docs/BACKEND.md) |
 | Conventions and gotchas, for AI coding agents | [CLAUDE.md](CLAUDE.md) |
 
-Two directories:
-
-| Path | What it is |
-| --- | --- |
-| `backend/` | FastAPI service — the session engine, the agents, both graphs, the WebSocket. |
-| `frontend/` | TanStack Start single-page app — canvas graph renderers, transcript, voice capture. |
-
-The halves each keep their own language's convention — `snake_case` on the wire,
-`camelCase` in TypeScript — and exactly one adapter
-(`frontend/src/lib/negotiation/adapter.ts`) translates between them. Nothing else
-in the frontend touches a backend field name.
+`backend/` is a FastAPI service — the session engine, the agents, both graphs.
+`frontend/` is a TanStack Start single-page app.
 
 ---
 
-## A note on what this is
+## License
 
-It began as a scored bargaining game: hidden objectives, utility scores, a
-winner. That turned out to be the less interesting half. What people actually
-watch is the argument — so the objectives went, the scoring went, and the graphs
-that record *what was claimed* went in.
-
-The bargaining machinery is still there, deliberately demoted. If you find
-something that still talks like a game, it's a leftover, not a design.
+MIT — see [LICENSE](LICENSE).
