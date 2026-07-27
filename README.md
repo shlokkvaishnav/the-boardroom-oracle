@@ -73,5 +73,3 @@ for fast voice transcription.
 
 Native setup, every environment variable, and the test commands are in
 **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
-
----
