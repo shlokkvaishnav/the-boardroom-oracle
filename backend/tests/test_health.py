@@ -14,7 +14,7 @@ def test_health_returns_ok(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
-        "service": "boardroom-oracle-backend",
+        "service": "four-chairs-backend",
         "version": "0.1.0",
     }
 

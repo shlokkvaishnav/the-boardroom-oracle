@@ -1,1 +1,1 @@
-"""Boardroom Oracle backend application package."""
+"""Four Chairs backend application package."""

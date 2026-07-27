@@ -22,12 +22,12 @@ import type {
 /**
  * Where this tab remembers its session id.
  *
- * `sessionStorage`, not `localStorage`: a refresh should rejoin the game in
- * progress, but a new tab should be a new negotiation, and closing the tab
+ * `sessionStorage`, not `localStorage`: a refresh should rejoin the discussion
+ * in progress, but a new tab should be a new one, and closing the tab
  * should let the backend reclaim the slot rather than leaving a ghost id that
  * outlives the server's TTL.
  */
-const SESSION_KEY = "boardroom-oracle:session-id";
+const SESSION_KEY = "four-chairs:session-id";
 
 function readStoredSessionId(): string | null {
   try {

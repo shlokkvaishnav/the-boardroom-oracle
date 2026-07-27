@@ -5,13 +5,13 @@
 #   docker compose up --build
 #
 # Frontend: http://localhost:3000   API: http://localhost:8000/docs
-name: boardroom-oracle
+name: four-chairs
 
 services:
   api:
     build:
       context: ./backend
-    image: boardroom-oracle-backend
+    image: four-chairs-backend
     ports:
       - "8000:8000"
     env_file:
@@ -39,7 +39,7 @@ services:
         # Baked into the bundle at build time and used by the *browser*, so it
         # is the host-visible URL, not the `api` service name.
         VITE_BACKEND_URL: "http://localhost:8000"
-    image: boardroom-oracle-frontend
+    image: four-chairs-frontend
     ports:
       - "3000:3000"
     depends_on:

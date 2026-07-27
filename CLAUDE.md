@@ -1,4 +1,4 @@
-# Boardroom Oracle — working notes
+# Four Chairs — working notes
 
 Three LLM agents argue a user-supplied topic, live, for six rounds. A human takes
 the fourth seat. Two graphs record it: who trusts whom, and what was claimed.

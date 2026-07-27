@@ -1,4 +1,4 @@
-# Boardroom Oracle — Backend
+# Four Chairs — Backend
 
 FastAPI service running a live multi-agent discussion: three Gemini-backed
 agents with distinct temperaments argue a user-supplied topic over a fixed

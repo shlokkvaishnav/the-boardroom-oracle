@@ -38,7 +38,7 @@ export function Header({
     <header className="panel grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-lg px-4 py-3 lg:flex lg:justify-between">
       <div className="flex min-w-0 items-center gap-5">
         <h1 className="font-display truncate text-xl font-bold tracking-[0.18em] text-glow text-primary lg:text-2xl">
-          BOARDROOM ORACLE
+          FOUR CHAIRS
         </h1>
         <span
           className={`hidden shrink-0 rounded border px-2 py-0.5 font-mono text-[10px] font-bold tracking-widest sm:inline ${

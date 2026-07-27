@@ -60,4 +60,4 @@ Bun.serve({
   },
 });
 
-console.log(`boardroom-oracle frontend listening on http://0.0.0.0:${port}`);
+console.log(`four-chairs frontend listening on http://0.0.0.0:${port}`);

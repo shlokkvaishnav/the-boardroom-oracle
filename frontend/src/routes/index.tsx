@@ -11,7 +11,7 @@ import { YourTurnBanner } from "@/components/boardroom/YourTurnBanner";
 import { ClosingPanel } from "@/components/boardroom/ClosingPanel";
 import { useNegotiation } from "@/hooks/useNegotiation";
 
-const TITLE = "Boardroom Oracle — Watch Three AI Agents Argue It Out";
+const TITLE = "Four Chairs — Watch Three AI Agents Argue It Out";
 const DESCRIPTION =
   "Give three AI agents a real-world topic and watch them argue it out live — taking positions, citing sources, rebutting each other, changing their minds. The argument is drawn as a graph while it happens. Pull up a chair and join in with your voice.";
 

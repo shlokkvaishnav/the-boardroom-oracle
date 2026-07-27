@@ -1,4 +1,4 @@
-# Boardroom Oracle
+# Four Chairs
 
 **Give three AI agents a topic people actually disagree about, and watch them
 argue it out — live, while the argument draws itself as a graph.**

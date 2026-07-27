@@ -1,5 +1,5 @@
 [project]
-name = "boardroom-oracle-backend"
+name = "four-chairs-backend"
 version = "0.1.0"
 description = "Live multi-agent AI negotiation demo — backend service"
 requires-python = ">=3.12,<3.13"

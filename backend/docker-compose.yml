@@ -1,10 +1,10 @@
-name: boardroom-oracle
+name: four-chairs
 
 services:
   api:
     build:
       context: .
-    image: boardroom-oracle-backend
+    image: four-chairs-backend
     ports:
       - "8000:8000"
     env_file:

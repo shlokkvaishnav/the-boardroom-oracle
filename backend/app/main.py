@@ -31,7 +31,7 @@ VERSION = "0.1.0"
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     logger.info(
-        "starting boardroom-oracle backend (model=%s, rounds=%s, turn_delay=%.1fs, agents=%s)",
+        "starting four-chairs backend (model=%s, rounds=%s, turn_delay=%.1fs, agents=%s)",
         settings.gemini_model,
         settings.rounds,
         settings.turn_delay_seconds,
@@ -85,7 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
     app = FastAPI(
-        title="Boardroom Oracle API",
+        title="Four Chairs API",
         description="Live multi-agent AI negotiation demo.",
         version=VERSION,
         lifespan=lifespan,
@@ -184,7 +184,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:
-        return {"status": "ok", "service": "boardroom-oracle-backend", "version": VERSION}
+        return {"status": "ok", "service": "four-chairs-backend", "version": VERSION}
 
     app.include_router(routes.router)
     app.include_router(routes.speech_router)

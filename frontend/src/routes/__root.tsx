@@ -73,13 +73,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Boardroom Oracle" },
+      { title: "Four Chairs" },
       {
         name: "description",
         content:
           "Three AI agents argue a topic you choose, live, while the argument draws itself as a graph.",
       },
-      { property: "og:title", content: "Boardroom Oracle" },
+      { property: "og:title", content: "Four Chairs" },
       {
         property: "og:description",
         content:
@@ -87,7 +87,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "Boardroom Oracle" },
+      { name: "twitter:title", content: "Four Chairs" },
       {
         name: "twitter:description",
         content:
